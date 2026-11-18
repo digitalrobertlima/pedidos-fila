@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#e85d04" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Caixa — Pedidos</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="caixa">
+  <!-- Desbloqueio de som: navegadores só tocam áudio após um toque do usuário -->
+  <div id="desbloqueio" class="desbloqueio">
+    <div>
+      <h1 data-nome-loja>Loja</h1>
+      <p>Painel do Caixa</p>
+      <button id="btn-iniciar" class="btn primario grande">🔔 Iniciar turno (ativar som)</button>
+    </div>
+  </div>
+
+  <header class="topo topo-caixa">
+    <div class="marca">
+      <h1><span data-nome-loja>Loja</span> · Caixa</h1>
+    </div>
+    <nav class="abas-caixa">
+      <button class="aba ativa" data-painel="fila">📋 Fila <span id="badge-pendentes" class="badge">0</span></button>
+      <button class="aba" data-painel="cardapio">🛠 Cardápio</button>
+    </nav>
+    <span id="status-conexao" class="status" title="Conexão em tempo real">● Offline</span>
+  </header>
+
+  <!-- ===================== ABA 1: FILA DE PEDIDOS ===================== -->
+  <section id="painel-fila" class="painel">
+    <div class="barra-acoes">
+      <button id="btn-testar-som" class="btn secundario">🔊 Testar som</button>
+      <button id="btn-limpar-historico" class="btn perigo">🧹 Limpar Histórico do Dia</button>
+    </div>
+    <h2>Pendentes</h2>
+    <div id="lista-pendentes" class="grade-pedidos"></div>
+    <h2>Histórico (lançados no PDV)</h2>
+    <div id="lista-historico" class="grade-pedidos historico"></div>
+  </section>
+
+  <!-- ===================== ABA 2: GESTÃO DO CARDÁPIO ===================== -->
+  <section id="painel-cardapio" class="painel" hidden>
+    <!-- Bloqueio por PIN -->
+    <div id="bloqueio-pin" class="bloqueio-pin">
+      <h2>Área do gerente</h2>
+      <p>Digite o PIN para editar o cardápio.</p>
+      <input id="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="PIN" />
+      <button id="btn-pin" class="btn primario">Entrar</button>
+      <p id="erro-pin" class="erro" hidden>PIN incorreto.</p>
+    </div>
+
+    <div id="editor" hidden>
+      <div class="barra-acoes fixa">
+        <button id="btn-publicar" class="btn primario">📡 Publicar Atualização em Tempo Real</button>
+        <span id="pendente-publicar" class="pendente" hidden>● Alterações não publicadas</span>
+        <span class="espaco"></span>
+        <button id="btn-exportar" class="btn secundario">⬇ Exportar Cardápio (JSON)</button>
+        <label class="btn secundario">⬆ Importar Cardápio (JSON)<input id="input-importar" type="file" accept="application/json,.json" hidden /></label>
+        <button id="btn-restaurar" class="btn perigo">↺ Restaurar padrão</button>
+        <button id="btn-sair-admin" class="btn secundario">🔒 Sair</button>
+      </div>
+
+      <h2>Categorias</h2>
+      <div id="lista-categorias" class="lista-categorias"></div>
+      <button id="btn-nova-categoria" class="btn secundario">+ Nova categoria</button>
+
+      <h2>Produtos e Combos</h2>
+      <div id="lista-editor-itens"></div>
+    </div>
+  </section>
+
+  <div id="aviso" class="aviso" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="cardapio-seed.js"></script>
+  <script src="comum.js"></script>
+  <script src="caixa.js"></script>
+</body>
+</html>

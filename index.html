@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#e85d04" />
+  <meta name="description" content="Faça seu pedido pela fila e retire no balcão." />
+  <title>Pedido na Fila</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="cliente">
+  <!-- ===================== TELA DE PEDIDO ===================== -->
+  <div id="tela-pedido">
+    <header class="topo">
+      <div class="marca">
+        <h1 data-nome-loja>Loja</h1>
+        <p id="slogan"></p>
+      </div>
+      <span id="status-cardapio" class="status" title="Cardápio em tempo real">●</span>
+    </header>
+
+    <!-- Identificação -->
+    <section class="identificacao">
+      <label for="nome-cliente">Seu nome <span class="obrig">*</span></label>
+      <input id="nome-cliente" type="text" maxlength="40" autocomplete="given-name" placeholder="Digite seu nome" />
+    </section>
+
+    <!-- Abas de categorias (fixas no topo ao rolar) -->
+    <nav id="abas" class="abas" aria-label="Categorias"></nav>
+
+    <!-- Lista de produtos da categoria -->
+    <main id="lista-itens" class="lista-itens"></main>
+
+    <!-- Barra do carrinho -->
+    <button id="barra-carrinho" class="barra-carrinho" hidden>
+      <span id="carrinho-qtd">0 itens</span>
+      <strong>Ver pedido</strong>
+      <span id="carrinho-total">R$ 0,00</span>
+    </button>
+  </div>
+
+  <!-- ===================== MONTADOR DE ITEM / COMBO ===================== -->
+  <div id="modal-item" class="modal" hidden>
+    <div class="folha">
+      <header class="folha-topo">
+        <div>
+          <h2 id="mi-nome"></h2>
+          <p id="mi-desc" class="sub"></p>
+        </div>
+        <button class="fechar" data-fechar aria-label="Fechar">✕</button>
+      </header>
+      <div id="mi-corpo" class="folha-corpo"></div>
+      <footer class="folha-rodape">
+        <button id="mi-adicionar" class="btn primario grande" disabled>Adicionar</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ===================== CARRINHO / FINALIZAÇÃO ===================== -->
+  <div id="modal-carrinho" class="modal" hidden>
+    <div class="folha">
+      <header class="folha-topo">
+        <h2>Seu pedido</h2>
+        <button class="fechar" data-fechar aria-label="Fechar">✕</button>
+      </header>
+      <div class="folha-corpo">
+        <ul id="carrinho-lista" class="carrinho-lista"></ul>
+
+        <h3>Como vai pagar no balcão?</h3>
+        <div class="pagamentos" role="radiogroup">
+          <label><input type="radio" name="pagamento" value="pix" /> <span>Pix</span></label>
+          <label><input type="radio" name="pagamento" value="cartao" /> <span>Cartão</span></label>
+          <label><input type="radio" name="pagamento" value="dinheiro" /> <span>Dinheiro</span></label>
+        </div>
+        <div id="campo-troco" hidden>
+          <label for="troco">Troco para quanto? (opcional)</label>
+          <input id="troco" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Ex: 50" />
+        </div>
+        <p id="erro-envio" class="erro" hidden></p>
+      </div>
+      <footer class="folha-rodape">
+        <div class="total-linha">Total <strong id="cf-total">R$ 0,00</strong></div>
+        <button id="btn-enviar" class="btn primario grande">Enviar Pedido</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ===================== COMANDA DIGITAL ===================== -->
+  <div id="tela-comanda" hidden>
+    <div class="comanda">
+      <p class="comanda-loja" data-nome-loja></p>
+      <p class="comanda-rotulo">PEDIDO</p>
+      <p id="cd-numero" class="comanda-numero"></p>
+      <p id="cd-nome" class="comanda-nome"></p>
+      <p id="cd-status" class="comanda-status"></p>
+      <dl class="comanda-info">
+        <dt>Pagamento</dt><dd id="cd-pagamento"></dd>
+        <dt>Horário</dt><dd id="cd-hora"></dd>
+      </dl>
+      <ul id="cd-itens" class="itens-pedido"></ul>
+      <p class="comanda-total">Total: <strong id="cd-total"></strong></p>
+      <p class="dica">Mostre esta tela no balcão para pagar e retirar.</p>
+      <button id="btn-reenviar" class="btn secundario" hidden>Tentar reenviar</button>
+      <button id="btn-novo" class="btn primario">Fazer novo pedido</button>
+    </div>
+  </div>
+
+  <div id="aviso" class="aviso" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="cardapio-seed.js"></script>
+  <script src="comum.js"></script>
+  <script src="cliente.js"></script>
+</body>
+</html>

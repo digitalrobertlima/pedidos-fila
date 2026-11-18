@@ -1,0 +1,14 @@
+{
+  "name": "Pedido na Fila",
+  "short_name": "Pedido",
+  "description": "Faça seu pedido pela fila e retire no balcão.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f4f1",
+  "theme_color": "#e85d04",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
