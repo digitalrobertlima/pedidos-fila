@@ -1,0 +1,5 @@
+# Dados gravados no PDV: nunca vão para o GitHub (podem ter dados de clientes)
+gravacao/
+resumo/
+para_enviar.zip
+__pycache__/
