@@ -29,14 +29,16 @@ icons/ · icon.svg · manter-acordado.mp4
 - **Cliente (opcional):** aparece o botão **📲 Instalar** no topo; quem não quiser instalar usa normalmente pelo navegador.
 - **Tela sempre ligada:** ao tocar em **Iniciar turno**, o caixa pede ao sistema para não apagar a tela (Wake Lock). Em aparelhos sem esse recurso, usa um vídeo mudo em loop como reserva. O botão **☀️ Tela ligada** no topo liga/desliga. Mesmo assim, mantenha o tablet **na tomada**.
 
-## Atualização automática
+## Atualização automática (a cada push)
 
-Os aparelhos verificam o arquivo `versao.js` ao abrir, ao voltar para o app e a cada 5 min:
-- **Cliente:** recarrega sozinho (carrinho, nome e comanda ficam salvos). Se o cliente estiver no meio da escolha de um item, espera ele fechar a janela.
-- **Caixa:** mostra "Nova versão disponível — Atualizar agora" e também atualiza sozinho num momento seguro: sem pedidos pendentes, sem edição de cardápio não publicada e sem ninguém mexendo há 1 minuto. Se o navegador permitir, o turno continua sem precisar tocar de novo.
+**Todo push na `main` que o GitHub Pages publicar chega sozinho em todos os aparelhos** (tablet, celular e computador). Não precisa mudar número de versão.
+
+Como funciona: o app guarda a "assinatura" dos próprios arquivos no servidor (ETag, data e tamanho, lidos só pelos cabeçalhos, sem baixar nada). A cada **1 minuto** com o app na tela, e também ao voltar para o app, ao ganhar foco e ao reconectar na internet, ele confere de novo. Se algo mudou:
+- **Cliente:** recarrega na hora. Carrinho, nome e comanda ficam salvos. Se a pessoa estiver com uma janela aberta (escolhendo um item ou na sacola), espera ela fechar.
+- **Caixa:** recarrega assim que ficar **10 s sem ninguém tocar** (ou 1 min se houver um campo em edição). Pedidos, rascunho do cardápio, PIN da sessão e aba aberta continuam iguais. Se o navegador não liberar o som sozinho depois de recarregar, aparece uma faixa amarela: **"Toque em qualquer lugar para reativar o som"**.
 - Ao voltar para o app (celular estava em segundo plano), o cardápio e o status da loja são buscados de novo na hora.
 
-➡️ **Sempre que mudar qualquer arquivo do site, aumente o número em `versao.js`.** É ele que avisa os aparelhos.
+O GitHub Pages leva cerca de 1 minuto para publicar depois do push. Somando a checagem, a atualização chega aos aparelhos em até uns 2 minutos.
 
 ## Produtos em 3D
 

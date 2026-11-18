@@ -39,6 +39,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await carregarCardapio();
 
+  // Volta para a aba que estava aberta antes de recarregar (ex: atualização automática).
+  const painel = sessionStorage.getItem('painel');
+  if (painel) trocarPainel(painel);
+
   // Pedidos ao vivo
   Ntfy.escutar(CONFIG.topicoPedidos, receberPedido, {
     // Sem id salvo (primeiro uso ou dados apagados), recupera a última 1h de pedidos.
@@ -164,22 +168,35 @@ function prepararAppDoCaixa() {
   document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && TelaLigada.ligar());
   TelaLigada.render();
 
-  // Atualização automática.
+  // Atualização automática: cada push no GitHub vira versão nova no tablet.
   App.iniciarAtualizacao(() => {
     $('#banner-atualizacao').hidden = false;
-    setInterval(atualizarSeSeguro, 30000);
+    atualizarSeSeguro();
+    setInterval(atualizarSeSeguro, 3000);
   });
-  ['pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, () => (_ultimaInteracao = Date.now()), true));
+  ['pointerdown', 'keydown', 'input'].forEach((ev) => document.addEventListener(ev, () => (_ultimaInteracao = Date.now()), true));
 
-  // Turno já iniciado antes (ex: após atualização): tenta seguir sem novo toque.
+  // Turno já iniciado antes (ex: após atualização): segue sem tela de bloqueio.
+  // Se o navegador não liberar o som sozinho, mostra uma faixa pedindo um toque.
   if (Armazenamento.ler('turnoAtivo', false)) {
+    $('#desbloqueio').hidden = true;
     iniciarAudio();
     TelaLigada.ligar();
-    setTimeout(() => {
-      if (estado.audio && estado.audio.state === 'running') $('#desbloqueio').hidden = true;
-      else $('#btn-iniciar').textContent = '🔔 Continuar turno (toque para ativar o som)';
-    }, 300);
+    setTimeout(verificarSom, 400);
   }
+  // Qualquer toque na tela reativa som e tela ligada.
+  document.addEventListener('pointerdown', () => {
+    if (!Armazenamento.ler('turnoAtivo', false)) return;
+    iniciarAudio();
+    if (!TelaLigada.ativa()) TelaLigada.ligar();
+    setTimeout(verificarSom, 200);
+  });
+}
+
+/** Mostra a faixa "toque para reativar o som" se o áudio estiver bloqueado. */
+function verificarSom() {
+  const ok = estado.audio && estado.audio.state === 'running';
+  $('#aviso-som').hidden = ok || !Armazenamento.ler('turnoAtivo', false);
 }
 
 function iniciarTurno() {
@@ -189,12 +206,22 @@ function iniciarTurno() {
   $('#desbloqueio').hidden = true;
 }
 
-/** Recarrega para a versão nova só quando não atrapalha a operação. */
+/**
+ * Recarrega para a versão nova assim que ninguém estiver mexendo (10s sem toque
+ * e sem campo em edição). Nada se perde: pedidos, rascunho do cardápio, PIN da
+ * sessão e aba aberta ficam salvos no aparelho.
+ */
+let _recarregando = false;
 function atualizarSeSeguro() {
-  const pendentes = estado.pedidos.some((r) => r.status === 'pendente');
-  const edicaoPendente = !$('#pendente-publicar').hidden;
-  const parado = Date.now() - _ultimaInteracao > 60000;
-  if (!pendentes && !edicaoPendente && parado) location.reload();
+  const semMexer = Date.now() - _ultimaInteracao;
+  const campoComFoco = document.activeElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName);
+  // Com um campo em foco, espera 1 min sem mexer (pode estar digitando); senão, 10s.
+  if (semMexer > (campoComFoco ? 60000 : 10000)) recarregarAgora();
+}
+
+function recarregarAgora() {
+  _recarregando = true;
+  location.reload();
 }
 
 function alternarTelaCheia() {
@@ -278,6 +305,7 @@ function receberPedido(env) {
   estado.pedidos.push({ pedido: env.dados, recebidoEm: new Date().toISOString(), status: 'pendente' });
   salvarPedidos();
   bip();
+  verificarSom();
   mostrarAviso(`Novo pedido #${env.dados.numero} — ${env.dados.nome}`);
 }
 
@@ -779,6 +807,7 @@ function mostrarAviso(texto) {
 }
 
 function trocarPainel(nome) {
+  sessionStorage.setItem('painel', nome);
   document.querySelectorAll('[data-painel]').forEach((b) => b.classList.toggle('ativa', b.dataset.painel === nome));
   $('#painel-fila').hidden = nome !== 'fila';
   $('#painel-cardapio').hidden = nome !== 'cardapio';
@@ -790,7 +819,7 @@ function ligarEventos() {
   $('#btn-iniciar').addEventListener('click', iniciarTurno);
   $('#btn-tela').addEventListener('click', () => TelaLigada.alternar());
   $('#btn-tela-cheia').addEventListener('click', alternarTelaCheia);
-  $('#btn-atualizar').addEventListener('click', () => location.reload());
+  $('#btn-atualizar').addEventListener('click', recarregarAgora);
   // Qualquer toque reativa o áudio caso o navegador o suspenda.
   document.addEventListener('pointerdown', () => estado.audio && estado.audio.state === 'suspended' && estado.audio.resume());
 
@@ -836,6 +865,6 @@ function ligarEventos() {
 
   // Aviso ao fechar a aba com alterações não publicadas.
   window.addEventListener('beforeunload', (e) => {
-    if (!$('#pendente-publicar').hidden) e.preventDefault();
+    if (!_recarregando && !$('#pendente-publicar').hidden) e.preventDefault();
   });
 }

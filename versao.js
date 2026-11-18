@@ -1,9 +1,8 @@
 /**
- * versao.js — VERSÃO DO APP
- * Toda vez que o site for alterado, aumente este número.
- * Os aparelhos com o app aberto checam este arquivo (sem cache) ao voltar
- * para o app e a cada 5 minutos; se mudou, atualizam sozinhos.
- * O service worker (sw.js) também importa este arquivo, então mudar a
- * versão renova o cache offline.
+ * versao.js — VERSÃO DO APP (informativa)
+ * A atualização automática NÃO depende mais deste número: os aparelhos
+ * detectam sozinhos qualquer push publicado no GitHub Pages (ver
+ * App.assinaturaDeploy em comum.js). Este valor só nomeia o cache
+ * offline do service worker — mudar aqui força um cache novo.
  */
-var VERSAO_APP = '2026.11.18-6';
+var VERSAO_APP = '2026.11.18-7';

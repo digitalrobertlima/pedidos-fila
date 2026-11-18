@@ -256,22 +256,37 @@ const App = {
     });
   },
 
-  /** Lê versao.js direto do servidor (sem cache) e devolve a versão nova, se houver. */
-  async versaoNova() {
-    try {
-      const txt = await (await fetch(`versao.js?t=${Date.now()}`, { cache: 'no-store' })).text();
-      const m = txt.match(/VERSAO_APP\s*=\s*'([^']+)'/);
-      return m && m[1] !== VERSAO_APP ? m[1] : null;
-    } catch {
-      return null;
-    }
+  /**
+   * ATUALIZAÇÃO AUTOMÁTICA A CADA PUSH NO GITHUB
+   * --------------------------------------------
+   * O app tira uma "assinatura do deploy": pede ao servidor só os
+   * cabeçalhos (HEAD) dos próprios arquivos — ETag, Last-Modified e
+   * tamanho. Todo push publicado no GitHub Pages muda essa assinatura,
+   * então NÃO é preciso aumentar número de versão à mão.
+   * O ?t= no fim de cada URL fura o cache da CDN do GitHub e do navegador.
+   */
+  ARQUIVOS_APP: ['index.html', 'caixa.html', 'style.css', 'config.js', 'versao.js', 'cardapio-seed.js', 'comum.js', 'ilustracoes.js', 'cliente.js', 'caixa.js', 'sw.js'],
+
+  async assinaturaDeploy() {
+    const t = Date.now();
+    const partes = await Promise.all(
+      this.ARQUIVOS_APP.map(async (arq) => {
+        const r = await fetch(`${arq}?t=${t}`, { method: 'HEAD', cache: 'no-store' });
+        if (!r.ok) throw new Error(`${arq}: ${r.status}`);
+        const h = (k) => r.headers.get(k) || '';
+        return `${arq}=${h('etag')}|${h('last-modified')}|${h('content-length')}`;
+      })
+    );
+    return partes.join(';');
   },
 
   /**
-   * Atualização automática:
+   * Inicia a atualização automática:
    *  - registra o service worker (sw.js) sem cache HTTP;
-   *  - checa versao.js ao abrir, ao voltar para o app, ao reconectar e a cada 5 min;
-   *  - havendo versão nova, chama aoAtualizar(versao).
+   *  - guarda a assinatura do deploy que está rodando agora;
+   *  - confere de novo a cada 60s (com o app na tela), ao voltar para o app,
+   *    ao ganhar foco e ao reconectar na internet;
+   *  - se mudou, chama aoAtualizar().
    */
   iniciarAtualizacao(aoAtualizar) {
     if ('serviceWorker' in navigator) {
@@ -280,21 +295,32 @@ const App = {
         .then((r) => (this.reg = r))
         .catch(() => {});
     }
+    let base = null; // assinatura do deploy carregado nesta página
     let jaAvisou = false;
+    let ocupado = false;
     const checar = async () => {
-      if (jaAvisou || !navigator.onLine) return;
-      const nova = await this.versaoNova();
-      if (!nova) return;
-      jaAvisou = true;
+      if (jaAvisou || ocupado || !navigator.onLine || document.visibilityState !== 'visible') return;
+      ocupado = true;
       try {
-        if (this.reg) await this.reg.update();
-      } catch {}
-      aoAtualizar(nova);
+        const atual = await this.assinaturaDeploy();
+        if (base === null) base = atual;
+        else if (atual !== base) {
+          jaAvisou = true;
+          try {
+            if (this.reg) await this.reg.update();
+          } catch {}
+          aoAtualizar();
+        }
+      } catch (e) {
+        // sem internet / servidor instável: tenta na próxima rodada
+      } finally {
+        ocupado = false;
+      }
     };
-    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && checar());
+    document.addEventListener('visibilitychange', checar);
     window.addEventListener('online', checar);
     window.addEventListener('focus', checar);
-    setInterval(checar, 5 * 60 * 1000);
+    setInterval(checar, 60 * 1000);
     checar();
   },
 };
