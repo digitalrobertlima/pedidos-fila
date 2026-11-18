@@ -314,6 +314,13 @@ input.invalido { border-color: #b00020 !important; background: #fff5f6 !importan
 #campo-troco label { display: block; font-size: 0.9rem; margin-bottom: 6px; }
 .erro { color: #b00020; font-weight: 700; margin-top: 10px; }
 
+/* Botão "Limpar tudo" da sacola */
+.btn-limpar {
+  border: 1px solid #f0c2c8; background: #fff5f6; color: #b00020; border-radius: 999px;
+  padding: 8px 12px; font-weight: 700; font-size: 0.85rem; white-space: nowrap;
+}
+.btn-limpar:active { transform: scale(0.95); }
+
 /* ---------- Pop-up do nome ---------- */
 .modal-centro { align-items: center; padding: 16px; }
 .cartao-nome {

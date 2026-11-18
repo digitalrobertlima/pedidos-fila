@@ -6,4 +6,4 @@
  * O service worker (sw.js) também importa este arquivo, então mudar a
  * versão renova o cache offline.
  */
-var VERSAO_APP = '2026.11.18-5';
+var VERSAO_APP = '2026.11.18-6';

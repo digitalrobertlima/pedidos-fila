@@ -481,6 +481,17 @@ function renderCarrinho() {
   $('#cf-total').textContent = dinheiro(totalCarrinho());
 }
 
+/** Esvazia a sacola inteira (com confirmação). */
+function limparSacola() {
+  if (!estado.carrinho.length) return;
+  const qtd = estado.carrinho.reduce((s, l) => s + l.qtd, 0);
+  if (!confirm(`Remover todos os ${qtd} itens da sacola?`)) return;
+  estado.carrinho = [];
+  salvarCarrinho();
+  fecharModais();
+  mostrarAviso('🗑 Sacola vazia');
+}
+
 /* ====================== ENVIO DO PEDIDO ====================== */
 
 /** Número curto do pedido, ex: P-482 (3 dígitos aleatórios). */
@@ -718,6 +729,7 @@ function ligarEventos() {
     erroNome('');
   });
   $('#btn-enviar').addEventListener('click', enviarPedido);
+  $('#btn-limpar-sacola').addEventListener('click', limparSacola);
   $('#form-nome').addEventListener('submit', confirmarNomeEEnviar);
   $('#btn-voltar-nome').addEventListener('click', voltarParaSacola);
   $('#btn-reenviar').addEventListener('click', () => transmitir(Armazenamento.ler('ultimaComanda')));
