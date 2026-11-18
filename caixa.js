@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.title = `${CONFIG.nomeLoja} — Caixa`;
   ligarEventos();
   renderPedidos();
+  prepararAppDoCaixa();
 
   await carregarCardapio();
 
@@ -82,6 +83,123 @@ async function carregarCardapio() {
   estado.cardapio = Cardapio.normalizar(clonar(c || CARDAPIO_SEED));
   Armazenamento.salvar('cardapio', estado.cardapio);
   estado.rascunho = Cardapio.normalizar(Armazenamento.ler('rascunho') || clonar(estado.cardapio));
+}
+
+/* ====================== APP DO CAIXA (PWA) ====================== */
+/*
+ * - Instalação como app de tela cheia (manifest-caixa.json)
+ * - Tela sempre ligada (Wake Lock API; reserva: vídeo mudo em loop)
+ * - Atualização automática: ao sair versão nova, o caixa recarrega
+ *   sozinho num momento seguro (sem pedidos pendentes, sem edição
+ *   não publicada e sem ninguém mexendo há 1 min). Também há botão
+ *   "Atualizar agora".
+ * - Turno: depois do 1º "Iniciar turno", recarregar não exige novo
+ *   toque se o navegador permitir som automaticamente.
+ */
+
+const TelaLigada = {
+  trava: null,
+  preferida() {
+    return Armazenamento.ler('telaLigada', true);
+  },
+  ativa() {
+    return (this.trava && !this.trava.released) || !$('#video-acordado').paused;
+  },
+  async ligar() {
+    if (!this.preferida() || document.visibilityState !== 'visible') return this.render();
+    try {
+      if ('wakeLock' in navigator) {
+        if (!this.ativa()) {
+          this.trava = await navigator.wakeLock.request('screen');
+          this.trava.addEventListener('release', () => this.render());
+        }
+      } else {
+        await $('#video-acordado').play();
+      }
+    } catch (e) {
+      // Sem Wake Lock (ou recusado): tenta o vídeo mudo em loop.
+      try {
+        await $('#video-acordado').play();
+      } catch {}
+    }
+    this.render();
+  },
+  async desligar() {
+    if (this.trava) await this.trava.release().catch(() => {});
+    this.trava = null;
+    $('#video-acordado').pause();
+    this.render();
+  },
+  async alternar() {
+    Armazenamento.salvar('telaLigada', !this.preferida());
+    if (this.preferida()) {
+      await this.ligar();
+      mostrarAviso(this.ativa() ? '☀️ A tela não vai apagar' : 'Este aparelho não permite manter a tela ligada. Ajuste o "tempo de tela" nas configurações.');
+    } else {
+      await this.desligar();
+      mostrarAviso('🌙 A tela pode apagar normalmente');
+    }
+  },
+  render() {
+    const b = $('#btn-tela');
+    const ok = this.ativa();
+    b.classList.toggle('ligado', ok);
+    b.textContent = ok ? '☀️ Tela ligada' : this.preferida() ? '⚠️ Tela pode apagar' : '🌙 Tela normal';
+  },
+};
+
+let _ultimaInteracao = Date.now();
+
+function prepararAppDoCaixa() {
+  App.configurarInstalacao($('#btn-instalar'));
+  App.configurarInstalacao($('#btn-instalar-inicio'));
+
+  // Evita que o navegador apague os pedidos/cardápio salvos por falta de espaço.
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+  // Tela cheia (some se o app já estiver instalado ou o aparelho não suportar).
+  if (!document.documentElement.requestFullscreen || App.instalado()) $('#btn-tela-cheia').hidden = true;
+
+  // Reativa a tela ligada sempre que o app volta ao primeiro plano.
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && TelaLigada.ligar());
+  TelaLigada.render();
+
+  // Atualização automática.
+  App.iniciarAtualizacao(() => {
+    $('#banner-atualizacao').hidden = false;
+    setInterval(atualizarSeSeguro, 30000);
+  });
+  ['pointerdown', 'keydown'].forEach((ev) => document.addEventListener(ev, () => (_ultimaInteracao = Date.now()), true));
+
+  // Turno já iniciado antes (ex: após atualização): tenta seguir sem novo toque.
+  if (Armazenamento.ler('turnoAtivo', false)) {
+    iniciarAudio();
+    TelaLigada.ligar();
+    setTimeout(() => {
+      if (estado.audio && estado.audio.state === 'running') $('#desbloqueio').hidden = true;
+      else $('#btn-iniciar').textContent = '🔔 Continuar turno (toque para ativar o som)';
+    }, 300);
+  }
+}
+
+function iniciarTurno() {
+  iniciarAudio();
+  TelaLigada.ligar();
+  Armazenamento.salvar('turnoAtivo', true);
+  $('#desbloqueio').hidden = true;
+}
+
+/** Recarrega para a versão nova só quando não atrapalha a operação. */
+function atualizarSeSeguro() {
+  const pendentes = estado.pedidos.some((r) => r.status === 'pendente');
+  const edicaoPendente = !$('#pendente-publicar').hidden;
+  const parado = Date.now() - _ultimaInteracao > 60000;
+  if (!pendentes && !edicaoPendente && parado) location.reload();
+}
+
+function alternarTelaCheia() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(() => {});
 }
 
 /* ====================== LOJA ABERTA / FECHADA ====================== */
@@ -327,6 +445,7 @@ function renderCategorias() {
     .map(
       (c, i) => `
     <div class="linha-cat">
+      <input value="${esc(c.icone || '')}" data-cat-icone="${i}" class="emoji-input" maxlength="4" aria-label="Emoji da categoria" />
       <input value="${esc(c.nome)}" data-cat-nome="${i}" aria-label="Nome da categoria" />
       <button class="btn mini" data-cat-mover="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''}>▲</button>
       <button class="btn mini" data-cat-mover="${i}" data-dir="1" ${i === cats.length - 1 ? 'disabled' : ''}>▼</button>
@@ -376,6 +495,7 @@ function htmlEditorItem(item, aberto, simples) {
       (o, oi) => `
     <div class="linha-sub">
       ${toggle(`data-op-campo="ativo" data-i="${oi}"`, o.ativo)}
+      <span class="mini" style="--fundo:${fundoItem(item, o.nome)}">${svgItem({ ...item, imagem: '' }, estado.rascunho, o.nome)}</span>
       <input value="${esc(o.nome)}" data-op-campo="nome" data-i="${oi}" placeholder="Sabor / variação" />
       <input value="${esc(o.codigoPdv)}" data-op-campo="codigoPdv" data-i="${oi}" placeholder="Cód. PDV" class="cod-input" />
       <button class="btn mini perigo" data-op-excluir="${oi}">✕</button>
@@ -400,6 +520,7 @@ function htmlEditorItem(item, aberto, simples) {
   <details class="ed-item ${item.ativo ? '' : 'pausado'} ${item.promocao ? 'promo' : ''}" data-id="${id}" ${aberto ? 'open' : ''}>
     <summary>
       ${toggle(`data-campo="ativo"`, item.ativo)}
+      <span class="mini" style="--fundo:${fundoItem(item)}">${svgItem(item, estado.rascunho)}</span>
       <span class="ed-nome">${esc(item.nome || '(sem nome)')}</span>
       ${item.promocao ? '<span class="selo">PROMO</span>' : ''}
       ${item.tipo === 'combo' ? '<span class="selo neutro">COMBO</span>' : ''}
@@ -416,8 +537,10 @@ function htmlEditorItem(item, aberto, simples) {
           <option value="simples" ${item.tipo === 'simples' ? 'selected' : ''}>Produto simples</option>
           <option value="combo" ${item.tipo === 'combo' ? 'selected' : ''}>Combo</option>
         </select></label>
+        <label>Ilustração 3D<select data-campo="ilustracao">${ILUSTRACOES.map(([v, t]) => `<option value="${v}" ${v === item.ilustracao ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         <label class="check"><input type="checkbox" data-campo="promocao" ${item.promocao ? 'checked' : ''}/> Destacar como Promoção</label>
         <label class="largo">Descrição (opcional)<input value="${esc(item.descricao || '')}" data-campo="descricao" /></label>
+        <label class="largo">Foto (opcional — link de imagem; se preenchido, substitui a ilustração 3D)<input type="url" value="${esc(item.imagem || '')}" data-campo="imagem" placeholder="https://… ou img/pastel.png" /></label>
       </div>
       ${
         item.tipo === 'simples'
@@ -451,12 +574,19 @@ function aoEditarCampo(e) {
     if (campo === 'preco') item.preco = parseFloat(valor) || 0;
     else item[campo] = valor;
     if (campo === 'tipo') {
+      if (valor === 'combo') item.ilustracao = 'combo';
       if (valor === 'combo' && !item.slots.length) item.slots.push({ id: gerarId('s'), nome: 'Pastéis', quantidade: 1, itemId: primeiroSimples() });
       redesenhar = true;
     }
-    if (['categoriaId', 'ativo', 'promocao'].includes(campo)) redesenhar = true;
+    if (['categoriaId', 'ativo', 'promocao', 'ilustracao', 'imagem'].includes(campo)) redesenhar = true;
+    // Produto novo com nome digitado: escolhe a ilustração automaticamente.
+    if (campo === 'nome' && e.type === 'change' && item.ilustracao === 'generico') {
+      item.ilustracao = adivinharIlustracao(item);
+      redesenhar = true;
+    }
   } else if (el.dataset.opCampo) {
     item.opcoes[el.dataset.i][el.dataset.opCampo] = valor;
+    if (el.dataset.opCampo === 'nome') redesenhar = true; // atualiza a cor da miniatura
   } else if (el.dataset.slotCampo) {
     const s = item.slots[el.dataset.i];
     s[el.dataset.slotCampo] = el.dataset.slotCampo === 'quantidade' ? Math.max(1, parseInt(valor, 10) || 1) : valor;
@@ -479,7 +609,7 @@ function aoClicarEditor(e) {
   const c = estado.rascunho;
 
   if (b.dataset.novoItem) {
-    const novo = { id: gerarId('item'), categoriaId: b.dataset.novoItem, nome: 'Novo produto', descricao: '', preco: 0, codigoPdv: '', ativo: true, promocao: false, tipo: 'simples', opcoes: [], slots: [] };
+    const novo = { id: gerarId('item'), categoriaId: b.dataset.novoItem, nome: 'Novo produto', descricao: '', preco: 0, codigoPdv: '', ativo: true, promocao: false, tipo: 'simples', ilustracao: 'generico', imagem: '', opcoes: [], slots: [] };
     c.itens.push(novo);
     renderEditorItens();
     const d = document.querySelector(`.ed-item[data-id="${novo.id}"]`);
@@ -518,6 +648,10 @@ function aoClicarEditor(e) {
 /* ---------- Categorias ---------- */
 
 function aoEditarCategoria(e) {
+  if (e.target.dataset.catIcone !== undefined) {
+    estado.rascunho.categorias[e.target.dataset.catIcone].icone = e.target.value;
+    return salvarRascunho();
+  }
   const i = e.target.dataset.catNome;
   if (i === undefined) return;
   estado.rascunho.categorias[i].nome = e.target.value;
@@ -545,7 +679,7 @@ function aoClicarCategoria(e) {
 function novaCategoria() {
   const nome = prompt('Nome da nova categoria:');
   if (!nome || !nome.trim()) return;
-  estado.rascunho.categorias.push({ id: gerarId('cat'), nome: nome.trim() });
+  estado.rascunho.categorias.push({ id: gerarId('cat'), nome: nome.trim(), icone: emojiCategoria(nome) });
   renderEditor();
 }
 
@@ -645,7 +779,6 @@ function mostrarAviso(texto) {
 }
 
 function trocarPainel(nome) {
-  $('#btn-loja').addEventListener('click', alternarLoja);
   document.querySelectorAll('[data-painel]').forEach((b) => b.classList.toggle('ativa', b.dataset.painel === nome));
   $('#painel-fila').hidden = nome !== 'fila';
   $('#painel-cardapio').hidden = nome !== 'cardapio';
@@ -653,10 +786,11 @@ function trocarPainel(nome) {
 }
 
 function ligarEventos() {
-  $('#btn-iniciar').addEventListener('click', () => {
-    iniciarAudio();
-    $('#desbloqueio').hidden = true;
-  });
+  $('#btn-loja').addEventListener('click', alternarLoja);
+  $('#btn-iniciar').addEventListener('click', iniciarTurno);
+  $('#btn-tela').addEventListener('click', () => TelaLigada.alternar());
+  $('#btn-tela-cheia').addEventListener('click', alternarTelaCheia);
+  $('#btn-atualizar').addEventListener('click', () => location.reload());
   // Qualquer toque reativa o áudio caso o navegador o suspenda.
   document.addEventListener('pointerdown', () => estado.audio && estado.audio.state === 'suspended' && estado.audio.resume());
 

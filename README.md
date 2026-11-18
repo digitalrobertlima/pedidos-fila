@@ -10,13 +10,37 @@ Sistema de autoatendimento para fila e gestão de pedidos — **White-Label**, 1
 ## Arquivos
 
 ```
-config.js          ← ÚNICO arquivo a editar por loja (nome, cor, tópicos ntfy, PIN)
+config.js          ← ÚNICO arquivo a editar por loja (nome, cor, tópicos ntfy)
+versao.js          ← número da versão: AUMENTE a cada mudança no site
 cardapio-seed.js   ← cardápio inicial de fábrica
-comum.js           ← funções compartilhadas (ntfy, compressão, regras do cardápio)
+comum.js           ← funções compartilhadas (ntfy, PWA, atualização, regras do cardápio)
+ilustracoes.js     ← produtos em "3D" (SVG vetorial, muda de cor conforme o sabor)
 index.html / cliente.js / style.css
 caixa.html / caixa.js
-manifest.json / sw.js / icon.svg   ← PWA (instalar na tela inicial, abre offline)
+manifest.json        ← PWA do cliente (opcional instalar)
+manifest-caixa.json  ← PWA do caixa (tela cheia, ícone escuro)
+sw.js                ← service worker: abre offline e sempre busca a versão nova
+icons/ · icon.svg · manter-acordado.mp4
 ```
+
+## Apps instaláveis (PWA)
+
+- **Caixa (tablet):** abra `caixa.html` no Chrome do tablet → **📲 Instalar app do caixa** (ou menu ⋮ → *Instalar app*). Ele abre em **tela cheia**, com ícone próprio e separado do app do cliente. No iPad: Safari → Compartilhar → *Adicionar à Tela de Início*.
+- **Cliente (opcional):** aparece o botão **📲 Instalar** no topo; quem não quiser instalar usa normalmente pelo navegador.
+- **Tela sempre ligada:** ao tocar em **Iniciar turno**, o caixa pede ao sistema para não apagar a tela (Wake Lock). Em aparelhos sem esse recurso, usa um vídeo mudo em loop como reserva. O botão **☀️ Tela ligada** no topo liga/desliga. Mesmo assim, mantenha o tablet **na tomada**.
+
+## Atualização automática
+
+Os aparelhos verificam o arquivo `versao.js` ao abrir, ao voltar para o app e a cada 5 min:
+- **Cliente:** recarrega sozinho (carrinho, nome e comanda ficam salvos). Se o cliente estiver no meio da escolha de um item, espera ele fechar a janela.
+- **Caixa:** mostra "Nova versão disponível — Atualizar agora" e também atualiza sozinho num momento seguro: sem pedidos pendentes, sem edição de cardápio não publicada e sem ninguém mexendo há 1 minuto. Se o navegador permitir, o turno continua sem precisar tocar de novo.
+- Ao voltar para o app (celular estava em segundo plano), o cardápio e o status da loja são buscados de novo na hora.
+
+➡️ **Sempre que mudar qualquer arquivo do site, aumente o número em `versao.js`.** É ele que avisa os aparelhos.
+
+## Produtos em 3D
+
+Cada produto tem uma ilustração vetorial com volume, brilho e sombra, que flutua na vitrine. Na janela do produto, o cliente **arrasta o dedo para girar** (no Android, também inclina com o celular). A lata, a garrafa, o suco e o refresco **mudam de cor conforme o sabor** escolhido. No painel, cada produto tem o campo **Ilustração 3D** e o campo **Foto** (opcional): para usar foto real, coloque a imagem na pasta `img/` do repositório e preencha `img/nome.png`.
 
 ## Publicar no GitHub Pages
 

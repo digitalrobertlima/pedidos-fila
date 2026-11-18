@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#e85d04" />
   <meta name="robots" content="noindex, nofollow" />
+  <!-- PWA do CAIXA: instala separado do app do cliente, abre em tela cheia -->
+  <link rel="manifest" href="manifest-caixa.json" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Caixa" />
+  <link rel="apple-touch-icon" href="icons/caixa-apple-touch-icon.png" />
   <title>Caixa — Pedidos</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="style.css" />
@@ -13,9 +20,14 @@
   <!-- Desbloqueio de som: navegadores só tocam áudio após um toque do usuário -->
   <div id="desbloqueio" class="desbloqueio">
     <div>
+      <img src="icons/caixa-192.png" alt="" />
       <h1 data-nome-loja>Loja</h1>
       <p>Painel do Caixa</p>
-      <button id="btn-iniciar" class="btn primario grande">🔔 Iniciar turno (ativar som)</button>
+      <div class="acoes-inicio">
+        <button id="btn-iniciar" class="btn primario grande">🔔 Iniciar turno</button>
+        <button id="btn-instalar-inicio" class="btn contorno grande" hidden>📲 Instalar app do caixa</button>
+      </div>
+      <small>Ao iniciar: o som de novos pedidos é ativado e a tela fica sempre ligada.</small>
     </div>
   </div>
 
@@ -28,7 +40,12 @@
       <button class="aba" data-painel="cardapio">🛠 Cardápio</button>
     </nav>
     <button id="btn-loja" class="btn-loja fechada">🔴 Loja FECHADA — tocar para abrir</button>
-    <span id="status-conexao" class="status" title="Conexão em tempo real">● Offline</span>
+    <div class="ferramentas">
+      <button id="btn-tela" class="btn-icone" title="Impedir que a tela apague">☀️ Tela ligada</button>
+      <button id="btn-tela-cheia" class="btn-icone" title="Tela cheia">⛶</button>
+      <button id="btn-instalar" class="btn-icone" hidden>📲 Instalar</button>
+      <span id="status-conexao" class="status" title="Conexão em tempo real">● Offline</span>
+    </div>
   </header>
 
   <!-- ===================== ABA 1: FILA DE PEDIDOS ===================== -->
@@ -78,9 +95,20 @@
 
   <div id="aviso" class="aviso" hidden></div>
 
+  <!-- Nova versão do app publicada -->
+  <div id="banner-atualizacao" class="banner-atualizacao" hidden>
+    ✨ Nova versão do sistema disponível
+    <button id="btn-atualizar" class="btn primario">Atualizar agora</button>
+  </div>
+
+  <!-- Reserva para "tela sempre ligada" em aparelhos sem Wake Lock (vídeo mudo em loop) -->
+  <video id="video-acordado" src="manter-acordado.mp4" muted loop playsinline hidden></video>
+
+  <script src="versao.js"></script>
   <script src="config.js"></script>
   <script src="cardapio-seed.js"></script>
   <script src="comum.js"></script>
+  <script src="ilustracoes.js"></script>
   <script src="caixa.js"></script>
 </body>
 </html>

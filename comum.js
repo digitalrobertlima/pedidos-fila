@@ -188,14 +188,20 @@ const Ntfy = {
     };
 
     // Ao voltar a internet ou o app voltar ao primeiro plano, reconecta na hora.
-    const reconectarJa = () => {
-      if (parado || (fonte && fonte.readyState === EventSource.OPEN)) return;
+    // Celulares "congelam" abas em segundo plano e a conexão pode parecer aberta
+    // sem estar viva — por isso, depois de 20s escondido, reconecta sempre.
+    let escondidoEm = 0;
+    const reconectarJa = (forcar) => {
+      if (parado || (!forcar && fonte && fonte.readyState === EventSource.OPEN)) return;
       if (fonte) fonte.close();
       clearTimeout(timer);
       conectar();
     };
-    window.addEventListener('online', reconectarJa);
-    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && reconectarJa());
+    window.addEventListener('online', () => reconectarJa(true));
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') escondidoEm = Date.now();
+      else reconectarJa(escondidoEm && Date.now() - escondidoEm > 20000);
+    });
 
     conectar();
     return () => {
@@ -203,6 +209,93 @@ const Ntfy = {
       clearTimeout(timer);
       if (fonte) fonte.close();
     };
+  },
+};
+
+/* ---------------------- PWA: INSTALAÇÃO E ATUALIZAÇÃO AUTOMÁTICA ---------------------- */
+
+const App = {
+  reg: null,
+
+  /** Está rodando como app instalado (tela cheia, sem barra do navegador)? */
+  instalado() {
+    return ['standalone', 'fullscreen', 'minimal-ui'].some((m) => matchMedia(`(display-mode: ${m})`).matches) || navigator.standalone === true;
+  },
+
+  ehIOS() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  },
+
+  /**
+   * Mostra o botão "Instalar" quando o navegador permitir.
+   * Android/Chrome: abre o diálogo nativo. iPhone/iPad: mostra o passo a passo.
+   */
+  configurarInstalacao(botao, aoMostrar) {
+    if (!botao || this.instalado()) return;
+    let evento = null;
+    const mostrar = () => {
+      botao.hidden = false;
+      aoMostrar && aoMostrar();
+    };
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      evento = e;
+      mostrar();
+    });
+    window.addEventListener('appinstalled', () => (botao.hidden = true));
+    if (this.ehIOS()) mostrar();
+    botao.addEventListener('click', async () => {
+      if (evento) {
+        evento.prompt();
+        await evento.userChoice;
+        evento = null;
+        botao.hidden = true;
+      } else if (this.ehIOS()) {
+        alert('Para instalar no iPhone/iPad:\n\n1. Abra este site no Safari\n2. Toque em Compartilhar (quadrado com seta ↑)\n3. Toque em "Adicionar à Tela de Início"');
+      }
+    });
+  },
+
+  /** Lê versao.js direto do servidor (sem cache) e devolve a versão nova, se houver. */
+  async versaoNova() {
+    try {
+      const txt = await (await fetch(`versao.js?t=${Date.now()}`, { cache: 'no-store' })).text();
+      const m = txt.match(/VERSAO_APP\s*=\s*'([^']+)'/);
+      return m && m[1] !== VERSAO_APP ? m[1] : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Atualização automática:
+   *  - registra o service worker (sw.js) sem cache HTTP;
+   *  - checa versao.js ao abrir, ao voltar para o app, ao reconectar e a cada 5 min;
+   *  - havendo versão nova, chama aoAtualizar(versao).
+   */
+  iniciarAtualizacao(aoAtualizar) {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .register('sw.js', { updateViaCache: 'none' })
+        .then((r) => (this.reg = r))
+        .catch(() => {});
+    }
+    let jaAvisou = false;
+    const checar = async () => {
+      if (jaAvisou || !navigator.onLine) return;
+      const nova = await this.versaoNova();
+      if (!nova) return;
+      jaAvisou = true;
+      try {
+        if (this.reg) await this.reg.update();
+      } catch {}
+      aoAtualizar(nova);
+    };
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && checar());
+    window.addEventListener('online', checar);
+    window.addEventListener('focus', checar);
+    setInterval(checar, 5 * 60 * 1000);
+    checar();
   },
 };
 
@@ -255,6 +348,9 @@ const Cardapio = {
   /** Garante que um JSON importado/recebido tenha a estrutura esperada. */
   normalizar(c) {
     if (!c || !Array.isArray(c.categorias) || !Array.isArray(c.itens)) throw new Error('Cardápio inválido');
+    c.categorias.forEach((cat) => {
+      if (!cat.icone && typeof emojiCategoria === 'function') cat.icone = emojiCategoria(cat.nome);
+    });
     c.itens.forEach((i) => {
       i.opcoes = Array.isArray(i.opcoes) ? i.opcoes : [];
       i.slots = Array.isArray(i.slots) ? i.slots : [];
@@ -263,6 +359,10 @@ const Cardapio = {
       i.codigoPdv = i.codigoPdv ?? '';
       i.ativo = i.ativo !== false;
       i.promocao = !!i.promocao;
+      i.imagem = i.imagem || '';
+      i.descricao = i.descricao || '';
+      // Ilustração 3D: usa a escolhida no painel ou adivinha pelo nome.
+      if (!i.ilustracao && typeof adivinharIlustracao === 'function') i.ilustracao = adivinharIlustracao(i);
       i.opcoes.forEach((o) => {
         o.codigoPdv = o.codigoPdv ?? '';
         o.ativo = o.ativo !== false;

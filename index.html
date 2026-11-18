@@ -5,56 +5,65 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#e85d04" />
   <meta name="description" content="Faça seu pedido pela fila e retire no balcão." />
-  <title>Pedido na Fila</title>
+  <!-- PWA (Android/Chrome usa o manifest; iPhone usa as metas apple-*) -->
   <link rel="manifest" href="manifest.json" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Pedido" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <title>Pedido na Fila</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body class="cliente">
   <!-- ===================== TELA DE PEDIDO ===================== -->
   <div id="tela-pedido">
-    <header class="topo">
-      <div class="marca">
-        <h1 data-nome-loja>Loja</h1>
-        <p id="slogan"></p>
+    <header class="hero">
+      <div class="hero-linha">
+        <img class="hero-logo" src="icon.svg" alt="" />
+        <div class="marca">
+          <h1 data-nome-loja>Loja</h1>
+          <p id="slogan"></p>
+        </div>
+        <button id="btn-instalar" class="pilula-instalar" hidden>📲 Instalar</button>
       </div>
-      <span id="status-cardapio" class="status" title="Cardápio em tempo real">●</span>
+      <div id="faixa-loja" class="faixa-loja verificando">Verificando se a loja está aberta…</div>
+      <label class="campo-nome">
+        <span>👋 Seu nome</span>
+        <input id="nome-cliente" type="text" maxlength="40" autocomplete="given-name" placeholder="Como podemos te chamar?" />
+      </label>
     </header>
 
-    <!-- Faixa de status da loja -->
-    <div id="faixa-loja" class="faixa-loja verificando">Verificando se a loja está aberta…</div>
-
-    <!-- Identificação -->
-    <section class="identificacao">
-      <label for="nome-cliente">Seu nome <span class="obrig">*</span></label>
-      <input id="nome-cliente" type="text" maxlength="40" autocomplete="given-name" placeholder="Digite seu nome" />
-    </section>
-
-    <!-- Abas de categorias (fixas no topo ao rolar) -->
+    <!-- Abas de categorias (grudam no topo ao rolar) -->
     <nav id="abas" class="abas" aria-label="Categorias"></nav>
 
-    <!-- Lista de produtos da categoria -->
-    <main id="lista-itens" class="lista-itens"></main>
+    <!-- Vitrine de produtos -->
+    <main id="lista-itens" class="vitrine"></main>
 
     <!-- Barra do carrinho -->
     <button id="barra-carrinho" class="barra-carrinho" hidden>
-      <span id="carrinho-qtd">0 itens</span>
-      <strong>Ver pedido</strong>
+      <span class="sacola">🛍️<b id="carrinho-qtd">0</b></span>
+      <strong>Ver meu pedido</strong>
       <span id="carrinho-total">R$ 0,00</span>
     </button>
   </div>
 
   <!-- ===================== MONTADOR DE ITEM / COMBO ===================== -->
   <div id="modal-item" class="modal" hidden>
-    <div class="folha">
-      <header class="folha-topo">
-        <div>
-          <h2 id="mi-nome"></h2>
-          <p id="mi-desc" class="sub"></p>
-        </div>
-        <button class="fechar" data-fechar aria-label="Fechar">✕</button>
-      </header>
-      <div id="mi-corpo" class="folha-corpo"></div>
+    <div class="folha folha-produto">
+      <button class="fechar flutuante" data-fechar aria-label="Fechar">✕</button>
+      <!-- Palco 3D: arraste o dedo para girar o produto -->
+      <div id="mi-palco" class="palco-grande">
+        <div class="giro"><div id="mi-objeto" class="objeto"></div></div>
+        <div class="sombra"></div>
+        <span class="dica-giro">↔ arraste para girar</span>
+      </div>
+      <div class="folha-corpo">
+        <h2 id="mi-nome"></h2>
+        <p id="mi-desc" class="sub"></p>
+        <div id="mi-corpo"></div>
+      </div>
       <footer class="folha-rodape">
         <button id="mi-adicionar" class="btn primario grande" disabled>Adicionar</button>
       </footer>
@@ -65,7 +74,7 @@
   <div id="modal-carrinho" class="modal" hidden>
     <div class="folha">
       <header class="folha-topo">
-        <h2>Seu pedido</h2>
+        <h2>🛍️ Seu pedido</h2>
         <button class="fechar" data-fechar aria-label="Fechar">✕</button>
       </header>
       <div class="folha-corpo">
@@ -73,9 +82,9 @@
 
         <h3>Como vai pagar no balcão?</h3>
         <div class="pagamentos" role="radiogroup">
-          <label><input type="radio" name="pagamento" value="pix" /> <span>Pix</span></label>
-          <label><input type="radio" name="pagamento" value="cartao" /> <span>Cartão</span></label>
-          <label><input type="radio" name="pagamento" value="dinheiro" /> <span>Dinheiro</span></label>
+          <label><input type="radio" name="pagamento" value="pix" /> <span><i>💠</i>Pix</span></label>
+          <label><input type="radio" name="pagamento" value="cartao" /> <span><i>💳</i>Cartão</span></label>
+          <label><input type="radio" name="pagamento" value="dinheiro" /> <span><i>💵</i>Dinheiro</span></label>
         </div>
         <div id="campo-troco" hidden>
           <label for="troco">Troco para quanto? (opcional)</label>
@@ -112,9 +121,11 @@
 
   <div id="aviso" class="aviso" hidden></div>
 
+  <script src="versao.js"></script>
   <script src="config.js"></script>
   <script src="cardapio-seed.js"></script>
   <script src="comum.js"></script>
+  <script src="ilustracoes.js"></script>
   <script src="cliente.js"></script>
 </body>
 </html>
