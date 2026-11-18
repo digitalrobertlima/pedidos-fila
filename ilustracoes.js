@@ -279,7 +279,8 @@ function desenhoItem(item, sabor) {
       if (/coxinha/.test(semAcento(s))) return _coxinha();
       return _pos(_quibe(), 78, 84, 0.6) + _pos(_coxinha(), 2, 22, 0.68);
     case 'caldo':
-      return _copo({ liquido: '#cbd65e', espuma: true, canudo: '#2f9e44', nivel: 0.86 });
+      // "Com limão" ganha uma rodela de limão na borda do copo.
+      return _copo({ liquido: '#cbd65e', espuma: true, canudo: '#2f9e44', nivel: 0.86, fruta: /com limao/.test(semAcento(s)) ? '#8cc63f' : null });
     case 'cafe':
       return _xicara({ liquido: '#4a2a14' });
     case 'cafe-leite':

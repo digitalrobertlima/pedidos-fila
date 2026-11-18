@@ -36,8 +36,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   aplicarTema();
   $('#slogan').textContent = CONFIG.slogan;
   document.title = `${CONFIG.nomeLoja} — Pedido na Fila`;
-  $('#nome-cliente').value = Armazenamento.ler('nomeCliente', '');
-  $('#nome-cliente').addEventListener('input', (e) => Armazenamento.salvar('nomeCliente', e.target.value));
 
   ligarEventos();
   ligarPalco3D();
@@ -252,9 +250,11 @@ function abrirMontador(itemId) {
     });
   } else {
     const ops = Cardapio.opcoesAtivas(item);
+    // Opções do tipo "Com/Sem ..." (ex: limão no caldo) não são sabores.
+    const ehComSem = ops.length && ops.every((o) => /^(com|sem)\b/i.test(o.nome.trim()));
     grupos.push({
       fonte: item,
-      titulo: ops.length ? 'Escolha os sabores' : 'Quantidade',
+      titulo: !ops.length ? 'Quantidade' : ehComSem ? 'Como você prefere?' : 'Escolha os sabores',
       limite: null,
       fixo: false,
       opcoes: ops.length
@@ -494,30 +494,67 @@ function erroEnvio(msg) {
   el.hidden = !msg;
 }
 
-async function enviarPedido() {
-  const nome = $('#nome-cliente').value.trim();
+/** Passo 1 — "Enviar Pedido" na sacola: valida pagamento e abre o pop-up do nome. */
+function enviarPedido() {
   const pagamento = (document.querySelector('input[name="pagamento"]:checked') || {}).value;
   const troco = parseFloat($('#troco').value);
 
   if (!estado.carrinho.length) return erroEnvio('Sua sacola está vazia.');
-  if (!nome) {
-    fecharModais();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    $('#nome-cliente').focus();
-    $('#nome-cliente').classList.add('invalido');
-    return mostrarAviso('Digite seu nome para enviar o pedido.');
-  }
   if (!pagamento) return erroEnvio('Escolha a forma de pagamento.');
-  const total = totalCarrinho();
-  if (pagamento === 'dinheiro' && troco && troco < total) return erroEnvio('O valor para troco é menor que o total.');
+  if (pagamento === 'dinheiro' && troco && troco < totalCarrinho()) return erroEnvio('O valor para troco é menor que o total.');
+  erroEnvio('');
+  abrirPopupNome();
+}
 
-  // Confere de novo no servidor se o caixa está aberto antes de enviar.
-  const btn = $('#btn-enviar');
+/** Pop-up "Qual é o seu nome?" (já vem preenchido com o nome usado da última vez). */
+function abrirPopupNome() {
+  $('#modal-carrinho').hidden = true;
+  erroNome('');
+  const input = $('#nome-cliente');
+  input.value = Armazenamento.ler('nomeCliente', '');
+  input.classList.remove('invalido');
+  abrirModal('#modal-nome');
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 50);
+}
+
+function voltarParaSacola() {
+  $('#modal-nome').hidden = true;
+  $('#modal-carrinho').hidden = false;
+}
+
+function erroNome(msg) {
+  $('#erro-nome').textContent = msg;
+  $('#erro-nome').hidden = !msg;
+}
+
+/** Passo 2 — nome confirmado: confere se a loja está aberta e envia. */
+async function confirmarNomeEEnviar(e) {
+  e.preventDefault();
+  const input = $('#nome-cliente');
+  const nome = input.value.trim().replace(/\s+/g, ' ');
+  if (nome.length < 2) {
+    input.classList.remove('invalido');
+    void input.offsetWidth; // reinicia a animação de "tremer"
+    input.classList.add('invalido');
+    input.focus();
+    return erroNome('Digite seu nome para enviarmos o pedido.');
+  }
+  Armazenamento.salvar('nomeCliente', nome);
+
+  const btn = $('#btn-confirmar-nome');
   btn.disabled = true;
   btn.textContent = 'Verificando…';
   await atualizarStatusDoServidor();
-  if (!lojaEstaAberta(estado.status)) return erroEnvio('A loja está fechada agora. Faça o pedido direto no balcão.');
-  erroEnvio('');
+  btn.disabled = false;
+  btn.textContent = 'Enviar Pedido';
+  if (!lojaEstaAberta(estado.status)) return erroNome('A loja está fechada agora. Faça o pedido direto no balcão.');
+
+  const pagamento = document.querySelector('input[name="pagamento"]:checked').value;
+  const troco = parseFloat($('#troco').value);
+  const total = totalCarrinho();
 
   const pedido = {
     uid: gerarId('ped'),
@@ -676,8 +713,13 @@ function ligarEventos() {
     r.addEventListener('change', () => ($('#campo-troco').hidden = r.value !== 'dinheiro' || !r.checked))
   );
 
-  $('#nome-cliente').addEventListener('input', (e) => e.target.classList.remove('invalido'));
+  $('#nome-cliente').addEventListener('input', (e) => {
+    e.target.classList.remove('invalido');
+    erroNome('');
+  });
   $('#btn-enviar').addEventListener('click', enviarPedido);
+  $('#form-nome').addEventListener('submit', confirmarNomeEEnviar);
+  $('#btn-voltar-nome').addEventListener('click', voltarParaSacola);
   $('#btn-reenviar').addEventListener('click', () => transmitir(Armazenamento.ler('ultimaComanda')));
   $('#btn-novo').addEventListener('click', novoPedido);
 

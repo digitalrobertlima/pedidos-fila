@@ -64,8 +64,9 @@ const CARDAPIO_SEED = {
     // ---------------- BEBIDAS ----------------
     _simples('agua-sem-gas', 'bebidas', 'Água Sem Gás 500ml', 3.0),
     _simples('agua-com-gas', 'bebidas', 'Água Com Gás 500ml', 3.5),
-    _simples('caldo-300', 'bebidas', 'Caldo de Cana 300ml', 5.0),
-    _simples('caldo-500', 'bebidas', 'Caldo de Cana 500ml', 6.5),
+    // Caldo de cana: "Sem limão / Com limão" funcionam como opções (cada uma pode ter código PDV).
+    _simples('caldo-300', 'bebidas', 'Caldo de Cana 300ml', 5.0, _ops('caldo300', ['Sem limão', 'Com limão'])),
+    _simples('caldo-500', 'bebidas', 'Caldo de Cana 500ml', 6.5, _ops('caldo500', ['Sem limão', 'Com limão'])),
     _simples('cafezinho', 'bebidas', 'Cafezinho', 3.0),
     _simples('cafe-leite-200', 'bebidas', 'Café c/ Leite 200ml', 4.5),
     _simples('cafe-leite-300', 'bebidas', 'Café c/ Leite 300ml', 5.5),

@@ -29,10 +29,6 @@
         <button id="btn-instalar" class="pilula-instalar" hidden>📲 Instalar</button>
       </div>
       <div id="faixa-loja" class="faixa-loja verificando">Verificando se a loja está aberta…</div>
-      <label class="campo-nome">
-        <span>👋 Seu nome</span>
-        <input id="nome-cliente" type="text" maxlength="40" autocomplete="given-name" placeholder="Como podemos te chamar?" />
-      </label>
     </header>
 
     <!-- Abas de categorias (grudam no topo ao rolar) -->
@@ -97,6 +93,19 @@
         <button id="btn-enviar" class="btn primario grande">Enviar Pedido</button>
       </footer>
     </div>
+  </div>
+
+  <!-- ===================== NOME DO CLIENTE (aparece ao tocar em Enviar Pedido) ===================== -->
+  <div id="modal-nome" class="modal modal-centro" hidden>
+    <form id="form-nome" class="folha cartao-nome" autocomplete="on">
+      <div class="emoji-grande">👋</div>
+      <h2>Qual é o seu nome?</h2>
+      <p class="sub">É por ele que vamos chamar você no balcão.</p>
+      <input id="nome-cliente" name="given-name" type="text" maxlength="40" autocomplete="given-name" enterkeyhint="send" placeholder="Digite seu nome" />
+      <p id="erro-nome" class="erro" hidden></p>
+      <button id="btn-confirmar-nome" type="submit" class="btn primario grande">Enviar Pedido</button>
+      <button type="button" class="btn secundario grande" id="btn-voltar-nome">Voltar</button>
+    </form>
   </div>
 
   <!-- ===================== COMANDA DIGITAL ===================== -->
