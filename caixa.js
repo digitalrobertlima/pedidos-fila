@@ -40,12 +40,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Pedidos ao vivo
   Ntfy.escutar(CONFIG.topicoPedidos, receberPedido, {
-    since: () => Armazenamento.ler('ultimoIdPedidos'),
+    // Sem id salvo (primeiro uso ou dados apagados), recupera a última 1h de pedidos.
+    since: () => Armazenamento.ler('ultimoIdPedidos') || '1h',
     aoStatus: (online) => {
       const el = $('#status-conexao');
       el.classList.toggle('online', online);
       el.textContent = online ? '● Online' : '● Reconectando…';
     },
+  });
+
+  // Status da loja: se estava aberta antes de recarregar, reafirma.
+  renderBotaoLoja();
+  if (Armazenamento.ler('lojaAberta', false)) publicarStatus(true);
+  setInterval(() => Armazenamento.ler('lojaAberta', false) && publicarStatus(true), STATUS_RENOVAR_MIN * 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Armazenamento.ler('lojaAberta', false)) publicarStatus(true);
+  });
+  // Ao fechar a aba do caixa, avisa os clientes que a loja fechou.
+  window.addEventListener('pagehide', () => {
+    if (Armazenamento.ler('lojaAberta', false)) {
+      Ntfy.publicar(CONFIG.topicoCardapio, 'status', { aberta: false, validoAte: null }, { semCompressao: true, keepalive: true }).catch(() => {});
+    }
   });
 
   // Mantém o cardápio sempre retido no ntfy.sh (ele guarda só ~12h).
@@ -67,6 +82,44 @@ async function carregarCardapio() {
   estado.cardapio = Cardapio.normalizar(clonar(c || CARDAPIO_SEED));
   Armazenamento.salvar('cardapio', estado.cardapio);
   estado.rascunho = Cardapio.normalizar(Armazenamento.ler('rascunho') || clonar(estado.cardapio));
+}
+
+/* ====================== LOJA ABERTA / FECHADA ====================== */
+
+/** Publica o status. "Aberta" vale por STATUS_VALIDADE_MIN e é renovada. */
+async function publicarStatus(aberta) {
+  const validoAte = aberta ? new Date(Date.now() + STATUS_VALIDADE_MIN * 60000).toISOString() : null;
+  try {
+    await Ntfy.publicar(CONFIG.topicoCardapio, 'status', { aberta, validoAte });
+    return true;
+  } catch (e) {
+    console.warn('Falha ao publicar status da loja', e);
+    return false;
+  }
+}
+
+function renderBotaoLoja() {
+  const aberta = Armazenamento.ler('lojaAberta', false);
+  const b = $('#btn-loja');
+  b.className = `btn-loja ${aberta ? 'aberta' : 'fechada'}`;
+  b.textContent = aberta ? '🟢 Loja ABERTA — tocar para fechar' : '🔴 Loja FECHADA — tocar para abrir';
+}
+
+async function alternarLoja() {
+  const abrir = !Armazenamento.ler('lojaAberta', false);
+  if (!abrir && !confirm('Fechar a loja? Os clientes não conseguirão mais enviar pedidos pela fila.')) return;
+  const b = $('#btn-loja');
+  b.disabled = true;
+  b.textContent = '⏳ Atualizando…';
+  const ok = await publicarStatus(abrir);
+  b.disabled = false;
+  if (!ok) {
+    renderBotaoLoja();
+    return alert('Sem internet: não foi possível avisar os clientes. Tente de novo.');
+  }
+  Armazenamento.salvar('lojaAberta', abrir);
+  renderBotaoLoja();
+  mostrarAviso(abrir ? '🟢 Loja aberta para pedidos' : '🔴 Loja fechada');
 }
 
 /* ====================== ÁUDIO (Web Audio API) ====================== */
@@ -162,15 +215,87 @@ function limparHistorico() {
 
 /* ====================== ABA 2: GESTÃO DO CARDÁPIO ====================== */
 
-function desbloquearAdmin() {
-  if ($('#pin').value === String(CONFIG.pinAdmin)) {
-    sessionStorage.setItem('adminOk', '1');
-    $('#pin').value = '';
-    $('#erro-pin').hidden = true;
-    mostrarEditor();
+/* ---------- PIN (nunca guardado em texto; só hash PBKDF2-SHA256 com sal) ---------- */
+/*
+ * O PIN é criado no próprio tablet no primeiro acesso. No localStorage fica
+ * apenas { sal, hash, iteracoes } — não dá para ler o PIN de volta.
+ * Após 5 erros seguidos, a entrada fica bloqueada por 60 segundos.
+ * Esqueceu o PIN? Exporte o cardápio antes, se possível, e apague os
+ * "dados do site" no navegador do tablet: o sistema pedirá um PIN novo.
+ */
+const PIN_ITERACOES = 210000;
+
+async function hashPin(pin, salBase64, iteracoes = PIN_ITERACOES) {
+  const chave = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: _base64ParaBytes(salBase64), iterations: iteracoes },
+    chave,
+    256
+  );
+  return _bufParaBase64(bits);
+}
+
+async function salvarNovoPin(pin) {
+  const sal = _bufParaBase64(crypto.getRandomValues(new Uint8Array(16)));
+  Armazenamento.salvar('pinHash', { sal, hash: await hashPin(pin, sal), iteracoes: PIN_ITERACOES });
+}
+
+/** Valida formato: 4 a 8 dígitos. */
+function pinValido(pin) {
+  return /^\d{4,8}$/.test(pin);
+}
+
+function erroPin(msg) {
+  $('#erro-pin').textContent = msg;
+  $('#erro-pin').hidden = !msg;
+}
+
+/** Ajusta a tela do PIN: "criar" (primeiro acesso / troca) ou "entrar". */
+function prepararTelaPin() {
+  const criando = !Armazenamento.ler('pinHash') || estado.trocandoPin;
+  $('#pin2').hidden = !criando;
+  $('#pin-instrucao').textContent = estado.trocandoPin
+    ? 'Digite o NOVO PIN (4 a 8 números) duas vezes.'
+    : criando
+    ? 'Primeiro acesso: crie um PIN de 4 a 8 números. Ele fica só neste tablet.'
+    : 'Digite o PIN para editar o cardápio.';
+  $('#btn-pin').textContent = criando ? 'Salvar PIN' : 'Entrar';
+}
+
+async function desbloquearAdmin() {
+  const pin = $('#pin').value;
+  const reg = Armazenamento.ler('pinHash');
+  const criando = !reg || estado.trocandoPin;
+
+  if (criando) {
+    if (!pinValido(pin)) return erroPin('Use de 4 a 8 números.');
+    if (pin !== $('#pin2').value) return erroPin('Os PINs não conferem.');
+    await salvarNovoPin(pin);
+    estado.trocandoPin = false;
+    mostrarAviso('🔑 PIN salvo neste tablet.');
   } else {
-    $('#erro-pin').hidden = false;
+    const bloqueio = Armazenamento.ler('pinBloqueio', { erros: 0, ate: 0 });
+    if (Date.now() < bloqueio.ate) return erroPin(`Muitas tentativas. Aguarde ${Math.ceil((bloqueio.ate - Date.now()) / 1000)}s.`);
+    if ((await hashPin(pin, reg.sal, reg.iteracoes)) !== reg.hash) {
+      bloqueio.erros++;
+      if (bloqueio.erros >= 5) bloqueio.ate = Date.now() + 60000;
+      Armazenamento.salvar('pinBloqueio', bloqueio.erros >= 5 ? { erros: 0, ate: bloqueio.ate } : bloqueio);
+      $('#pin').value = '';
+      return erroPin('PIN incorreto.');
+    }
+    Armazenamento.remover('pinBloqueio');
   }
+
+  sessionStorage.setItem('adminOk', '1');
+  $('#pin').value = $('#pin2').value = '';
+  erroPin('');
+  mostrarEditor();
+}
+
+function trocarPin() {
+  estado.trocandoPin = true;
+  sessionStorage.removeItem('adminOk');
+  mostrarEditor();
 }
 
 function mostrarEditor() {
@@ -178,6 +303,10 @@ function mostrarEditor() {
   $('#bloqueio-pin').hidden = ok;
   $('#editor').hidden = !ok;
   if (ok) renderEditor();
+  else {
+    prepararTelaPin();
+    $('#pin').focus();
+  }
 }
 
 /** Salva o rascunho e mostra se há alterações não publicadas. */
@@ -516,6 +645,7 @@ function mostrarAviso(texto) {
 }
 
 function trocarPainel(nome) {
+  $('#btn-loja').addEventListener('click', alternarLoja);
   document.querySelectorAll('[data-painel]').forEach((b) => b.classList.toggle('ativa', b.dataset.painel === nome));
   $('#painel-fila').hidden = nome !== 'fila';
   $('#painel-cardapio').hidden = nome !== 'cardapio';
@@ -544,7 +674,9 @@ function ligarEventos() {
   });
 
   $('#btn-pin').addEventListener('click', desbloquearAdmin);
-  $('#pin').addEventListener('keydown', (e) => e.key === 'Enter' && desbloquearAdmin());
+  $('#pin').addEventListener('keydown', (e) => e.key === 'Enter' && ($('#pin2').hidden ? desbloquearAdmin() : $('#pin2').focus()));
+  $('#pin2').addEventListener('keydown', (e) => e.key === 'Enter' && desbloquearAdmin());
+  $('#btn-trocar-pin').addEventListener('click', trocarPin);
   $('#btn-sair-admin').addEventListener('click', () => {
     sessionStorage.removeItem('adminOk');
     mostrarEditor();

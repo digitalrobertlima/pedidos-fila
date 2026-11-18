@@ -27,6 +27,7 @@
       <button class="aba ativa" data-painel="fila">📋 Fila <span id="badge-pendentes" class="badge">0</span></button>
       <button class="aba" data-painel="cardapio">🛠 Cardápio</button>
     </nav>
+    <button id="btn-loja" class="btn-loja fechada">🔴 Loja FECHADA — tocar para abrir</button>
     <span id="status-conexao" class="status" title="Conexão em tempo real">● Offline</span>
   </header>
 
@@ -47,10 +48,11 @@
     <!-- Bloqueio por PIN -->
     <div id="bloqueio-pin" class="bloqueio-pin">
       <h2>Área do gerente</h2>
-      <p>Digite o PIN para editar o cardápio.</p>
+      <p id="pin-instrucao">Digite o PIN para editar o cardápio.</p>
       <input id="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="PIN" />
+      <input id="pin2" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="Repita o PIN" hidden />
       <button id="btn-pin" class="btn primario">Entrar</button>
-      <p id="erro-pin" class="erro" hidden>PIN incorreto.</p>
+      <p id="erro-pin" class="erro" hidden></p>
     </div>
 
     <div id="editor" hidden>
@@ -61,6 +63,7 @@
         <button id="btn-exportar" class="btn secundario">⬇ Exportar Cardápio (JSON)</button>
         <label class="btn secundario">⬆ Importar Cardápio (JSON)<input id="input-importar" type="file" accept="application/json,.json" hidden /></label>
         <button id="btn-restaurar" class="btn perigo">↺ Restaurar padrão</button>
+        <button id="btn-trocar-pin" class="btn secundario">🔑 Trocar PIN</button>
         <button id="btn-sair-admin" class="btn secundario">🔒 Sair</button>
       </div>
 

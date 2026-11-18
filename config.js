@@ -10,9 +10,8 @@
  *  ⚠️ SEGURANÇA:
  *  - Os tópicos do ntfy.sh são PÚBLICOS: quem souber o nome pode
  *    ler/publicar. Por isso use nomes longos e aleatórios.
- *  - O PIN fica no código do site (visível para quem abrir o
- *    código-fonte). Ele evita mexidas acidentais, mas não é uma
- *    proteção forte. Troque-o e não divulgue o link do caixa.
+ *  - O PIN do gerente NÃO fica neste arquivo nem no GitHub: é
+ *    criado no tablet e salvo só como hash criptográfico.
  * ============================================================
  */
 const CONFIG = {
@@ -40,8 +39,8 @@ const CONFIG = {
   /** Tópico onde o caixa publica o cardápio e os clientes escutam. */
   topicoCardapio: 'pastelandia-cardapio-426bb334e3',
 
-  /** PIN numérico para acessar a gestão do cardápio no tablet. */
-  pinAdmin: '1234',
+  // O PIN do gerente NÃO fica aqui: ele é criado no próprio tablet no
+  // primeiro acesso e guardado apenas como hash (PBKDF2 + sal) no aparelho.
 
   /**
    * O ntfy.sh guarda mensagens por ~12h. Enquanto o tablet do caixa

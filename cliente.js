@@ -20,6 +20,7 @@ const estado = {
   aba: null,
   carrinho: Armazenamento.ler('carrinho', []),
   montagem: null, // item sendo montado no modal
+  status: null, // { aberta, validoAte } publicado pelo caixa
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -50,10 +51,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn('Sem acesso ao cardápio online, usando o local.', e);
   }
 
-  // 3) Escuta atualizações ao vivo.
+  // 2b) Status da loja (aberta/fechada).
+  await atualizarStatusDoServidor();
+  setInterval(renderStatusLoja, 20000); // o "aberta" expira sozinho se o caixa sumir
+
+  // 3) Escuta atualizações ao vivo (cardápio e status da loja).
   Ntfy.escutar(
     CONFIG.topicoCardapio,
-    (env) => env.tipo === 'cardapio' && definirCardapio(env.dados, true),
+    (env) => {
+      if (env.tipo === 'cardapio') definirCardapio(env.dados, true);
+      if (env.tipo === 'status') definirStatus(env.dados);
+    },
     { aoStatus: (online) => $('#status-cardapio').classList.toggle('online', online) }
   );
 
@@ -76,6 +84,33 @@ function definirCardapio(novo, avisar) {
   renderItens();
   renderBarraCarrinho();
   if (avisar) mostrarAviso('Cardápio atualizado');
+}
+
+/* ====================== LOJA ABERTA / FECHADA ====================== */
+
+async function atualizarStatusDoServidor() {
+  try {
+    const env = await Ntfy.buscarUltima(CONFIG.topicoCardapio, 'status');
+    definirStatus(env ? env.dados : { aberta: false });
+  } catch (e) {
+    console.warn('Não foi possível verificar o status da loja.', e);
+    definirStatus(estado.status || { aberta: false });
+  }
+}
+
+function definirStatus(status) {
+  estado.status = status;
+  renderStatusLoja();
+}
+
+function renderStatusLoja() {
+  const aberta = lojaEstaAberta(estado.status);
+  const faixa = $('#faixa-loja');
+  faixa.className = `faixa-loja ${aberta ? 'aberta' : 'fechada'}`;
+  faixa.textContent = aberta ? '🟢 Loja aberta — pode fazer seu pedido!' : '🔴 Loja fechada — pedidos pela fila indisponíveis no momento';
+  const btn = $('#btn-enviar');
+  btn.disabled = !aberta;
+  btn.textContent = aberta ? 'Enviar Pedido' : 'Loja fechada';
 }
 
 /* ====================== ABAS E LISTA ====================== */
@@ -327,6 +362,12 @@ async function enviarPedido() {
   if (!pagamento) return erroEnvio('Escolha a forma de pagamento.');
   const total = totalCarrinho();
   if (pagamento === 'dinheiro' && troco && troco < total) return erroEnvio('O valor para troco é menor que o total.');
+  // Confere de novo no servidor se o caixa está aberto antes de enviar.
+  const btn = $('#btn-enviar');
+  btn.disabled = true;
+  btn.textContent = 'Verificando…';
+  await atualizarStatusDoServidor();
+  if (!lojaEstaAberta(estado.status)) return erroEnvio('A loja está fechada agora. Faça o pedido direto no balcão.');
   erroEnvio('');
 
   const pedido = {

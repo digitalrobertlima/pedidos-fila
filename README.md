@@ -26,10 +26,19 @@ manifest.json / sw.js / icon.svg   ← PWA (instalar na tela inicial, abre offli
 
 ## Primeiro uso
 
-1. **Edite o `config.js`**: troque o `pinAdmin` (padrão `1234`). Se quiser, troque os tópicos por outros nomes longos e aleatórios.
-2. Abra `caixa.html` no tablet → **Iniciar turno** (libera o som).
-3. Aba **Cardápio** → PIN → preencha os **Códigos PDV**, ajuste preços (o *Refrigerante 600ml* vem sem preço e fica indisponível até você definir) → **Publicar Atualização em Tempo Real**.
+1. Abra `caixa.html` no tablet → **Iniciar turno** (libera o som).
+2. Toque em **🔴 Loja FECHADA** para abrir a loja. Enquanto a loja estiver fechada, o app do cliente mostra "Loja fechada" e não envia pedidos.
+3. Aba **Cardápio** → no primeiro acesso, **crie o PIN** (4 a 8 números) → preencha os **Códigos PDV**, ajuste preços (o *Refrigerante 600ml* vem sem preço e fica indisponível até você definir) → **Publicar Atualização em Tempo Real**.
 4. Gere um QR Code do link do cliente e coloque na fila.
+
+## PIN do gerente
+
+O PIN **não fica no código nem no GitHub**. Ele é criado no próprio tablet e guardado só como hash (PBKDF2-SHA256, 210 mil iterações, sal aleatório). Depois de 5 erros seguidos, a tela de PIN bloqueia por 60 segundos. Para trocar o PIN, use **🔑 Trocar PIN** dentro do painel.
+**Esqueceu o PIN?** Exporte o cardápio antes, se possível. Depois apague os dados do site no navegador do tablet: o sistema vai pedir um PIN novo, e o cardápio publicado volta do ntfy.sh.
+
+## Loja aberta / fechada
+
+O botão no topo do caixa publica o status. "Aberta" vale 15 min e o tablet renova sozinho a cada 10 min. Se o tablet desligar ou perder a internet, a loja aparece **fechada** para os clientes em até 15 min. Ao fechar a aba do caixa, os clientes recebem "fechada" na hora. Antes de enviar cada pedido, o app do cliente confere de novo se a loja está aberta.
 
 ## Como funciona
 
@@ -41,7 +50,7 @@ manifest.json / sw.js / icon.svg   ← PWA (instalar na tela inicial, abre offli
 ## Limitações conhecidas (v1)
 
 - Tópicos do ntfy.sh são públicos para quem souber o nome: não compartilhe o `config.js` fora do repositório e use nomes aleatórios.
-- O PIN fica no código do site: evita mexidas acidentais, mas não é segurança forte.
+- O PIN protege só o painel deste tablet. Como os tópicos são públicos, quem descobrir o nome do tópico de cardápio poderia publicar nele.
 - O número do pedido (`#P-123`) tem 3 dígitos aleatórios; repetições no mesmo dia são raras e não causam erro (cada pedido tem um id interno único).
 - O histórico de pedidos fica só no tablet (localStorage).
 

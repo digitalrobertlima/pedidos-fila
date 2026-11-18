@@ -73,10 +73,11 @@ const CARDAPIO_SEED = {
     _simples('suco-500', 'bebidas', 'Suco Natural 500ml', 12.0, _ops('suco500', ['Laranja', 'Limonada Suíça'])),
     _simples('refresco-300', 'bebidas', 'Refresco 300ml', 3.0, _ops('ref300', ['Caju', 'Laranja'])),
     _simples('refresco-500', 'bebidas', 'Refresco 500ml', 4.0, _ops('ref500', ['Caju', 'Laranja'])),
-    _simples('refri-lata-220', 'bebidas', 'Refrigerante Lata 220ml', 4.0),
+    // Todos os refrigerantes têm sabores próprios — edite/adicione/apague no painel do caixa.
+    _simples('refri-lata-220', 'bebidas', 'Refrigerante Lata 220ml', 4.0, _ops('lata220', ['Coca-Cola', 'Coca-Cola Zero', 'Fanta Laranja', 'Fanta Guaraná', 'Sprite'])),
     _simples('refri-lata-350', 'bebidas', 'Refrigerante Lata 350ml', 7.0, _ops('lata350', ['Coca-Cola', 'Coca-Cola Zero', 'Fanta Laranja', 'Fanta Uva', 'Fanta Guaraná'])),
     // Preço 0 = "a definir": o item aparece como indisponível até o gerente cadastrar o preço no painel.
     _simples('refri-600', 'bebidas', 'Refrigerante 600ml', 0, _ops('refri600', ['Kuat', 'Coca-Cola', 'Coca-Cola Zero', 'Sprite'])),
-    _simples('refri-2l', 'bebidas', 'Refrigerante 2L', 22.5),
+    _simples('refri-2l', 'bebidas', 'Refrigerante 2L', 22.5, _ops('refri2l', ['Coca-Cola', 'Coca-Cola Zero', 'Fanta Laranja', 'Fanta Guaraná', 'Sprite'])),
   ],
 };

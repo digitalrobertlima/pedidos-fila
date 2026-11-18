@@ -116,10 +116,12 @@ const Ntfy = {
    * Publica um envelope { tipo, loja, enviadoEm, dados } no tópico.
    * Lança erro se a rede falhar.
    */
-  async publicar(topico, tipo, dados) {
+  async publicar(topico, tipo, dados, opcoes = {}) {
     const envelope = { tipo, loja: CONFIG.lojaId, enviadoEm: new Date().toISOString(), dados };
-    const corpo = await comprimir(JSON.stringify(envelope));
-    const resp = await fetch(this.url(topico), { method: 'POST', body: corpo });
+    const json = JSON.stringify(envelope);
+    // opcoes.semCompressao: envio síncrono (usado ao fechar a aba, quando não dá tempo de comprimir)
+    const corpo = opcoes.semCompressao ? json : await comprimir(json);
+    const resp = await fetch(this.url(topico), { method: 'POST', body: corpo, keepalive: !!opcoes.keepalive });
     if (!resp.ok) throw new Error(`ntfy respondeu ${resp.status}`);
     return resp.json();
   },
@@ -203,6 +205,21 @@ const Ntfy = {
     };
   },
 };
+
+/* ---------------------- STATUS DA LOJA (aberta/fechada) ---------------------- */
+/*
+ * O caixa publica no tópico do cardápio uma mensagem tipo 'status':
+ *   { aberta: true|false, validoAte: ISO }
+ * "Aberta" funciona como um aluguel: vale até validoAte e o caixa renova
+ * periodicamente. Se o tablet desligar/travar sem avisar, a loja passa a
+ * aparecer FECHADA sozinha quando o prazo vence.
+ */
+const STATUS_VALIDADE_MIN = 15; // minutos de validade de cada "aberta"
+const STATUS_RENOVAR_MIN = 10;  // o caixa renova antes de vencer
+
+function lojaEstaAberta(status) {
+  return !!(status && status.aberta && status.validoAte && new Date(status.validoAte).getTime() > Date.now());
+}
 
 /* ---------------------- REGRAS DO CARDÁPIO ---------------------- */
 
