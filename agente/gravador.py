@@ -36,6 +36,7 @@ import datetime
 import json
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -51,7 +52,8 @@ MAX_TELAS = 600        # máximo de fotos de telas diferentes guardadas
 TECLAS_ESPECIAIS_IGNORADAS = {"shift", "shift_r", "ctrl_l", "ctrl_r", "alt_l", "alt_r", "alt_gr", "caps_lock", "cmd"}
 TECLAS_COM_FOTO = {"enter", "esc"} | {"f%d" % i for i in range(1, 13)}  # teclas que também fotografam a tela depois
 CODIGO_ESPERA = 0.7       # segundos sem digitar = código completo (o PDV abre a tela sem precisar de Enter)
-MAX_DIGITOS_CODIGO = 4    # mais que isso (CPF, cartão...) não é gravado
+MAX_DIGITOS_CODIGO = 6    # código de produto; mais que isso (CPF, cartão...) não é gravado
+FORMATO_CODIGO = re.compile(r"^(?:(\d{1,3})\*)?(\d{1,%d})$" % MAX_DIGITOS_CODIGO)  # "1041" ou "2*1041" (quantidade*código)
 _mutex = None             # mantém vivo o "cadeado" de instância única
 
 
@@ -226,10 +228,17 @@ class Gravador:
             ts = self.ts_ultimo_digito
         if not digitos:
             return
-        if len(digitos) > MAX_DIGITOS_CODIGO:
-            self.escrever({"tipo": "numero_longo", "digitos": len(digitos), "ts": ts})  # sem o valor!
+        m = FORMATO_CODIGO.match(digitos)
+        if m:
+            ev = {"tipo": "codigo", "codigo": m.group(2), "terminou_por": motivo, "ts": ts}
+            if m.group(1):
+                ev["quantidade"] = int(m.group(1))
+            self._agendar_depois(ev)
         else:
-            self._agendar_depois({"tipo": "codigo", "codigo": digitos, "terminou_por": motivo, "ts": ts})
+            n = sum(c.isdigit() for c in digitos)
+            if n > MAX_DIGITOS_CODIGO:
+                self.escrever({"tipo": "numero_longo", "digitos": n, "ts": ts})  # sem o valor!
+            # sobras como "*" sozinho são ignoradas
 
     def _guardar_digito(self, d):
         with self.trava_codigo:
@@ -262,7 +271,9 @@ class Gravador:
             vk = getattr(tecla, "vk", None)
             if char is None and vk is not None and 96 <= vk <= 105:  # teclado numérico
                 char = str(vk - 96)
-            if char is not None and char.isdigit():
+            if char is None and vk == 106:  # * do teclado numérico
+                char = "*"
+            if char is not None and (char.isdigit() or char == "*"):
                 return self._guardar_digito(char)
             nome = "caractere" if char is not None else str(tecla).replace("Key.", "")
             if nome in TECLAS_ESPECIAIS_IGNORADAS:

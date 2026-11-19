@@ -5,8 +5,8 @@ Programa que **só observa** o PDV por alguns dias: anota cada clique (posição
 ## O que fica gravado
 - Cliques do mouse: hora, posição, botão, id da tela antes e depois.
 - Teclas **especiais** (F1…F12, Enter, Esc, Tab…). F-keys, Enter e Esc também guardam a tela que abriu em seguida.
-- **Códigos curtos digitados** (até 4 números), como o **12** da promoção de 10 pastéis, junto com a tela que abriu depois. Não precisa apertar Enter: o gravador entende que o código acabou quando você para de digitar.
-- Números **longos** (CPF, cartão…) **não** são gravados: só fica registrado que houve um número de X dígitos.
+- **Códigos curtos digitados** (até 6 números, com quantidade opcional, ex.: **2*1041**), como o **12** da promoção de 10 pastéis, junto com a tela que abriu depois. Não precisa apertar Enter: o gravador entende que o código acabou quando você para de digitar.
+- Números **longos** (mais de 6 dígitos: CPF, cartão…) **não** são gravados: só fica registrado que houve um número de X dígitos.
 - Letras não são gravadas, só "caractere".
 - Uma foto (JPEG) de cada tela diferente do PDV, não uma foto por clique.
 

@@ -91,7 +91,7 @@ def analisar(eventos):
             if c["tipo"] == "clique":
                 rotulos.append("%s@%d,%d" % ((c["tela_antes"],) + celula(c["x"], c["y"])))
             elif c["tipo"] == "codigo":
-                rotulos.append("cód %s" % c["codigo"])
+                rotulos.append("cód %s%s" % (c["codigo"], " ×%d" % c["quantidade"] if c.get("quantidade") else ""))
             else:
                 rotulos.append(c["tecla"].upper())
         sequencias[tuple(rotulos)] += 1
