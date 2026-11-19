@@ -47,7 +47,7 @@ def celula(x, y):
     return (x // CELULA, y // CELULA)
 
 
-def separar_atendimentos(cliques):
+def separar_atendimentos(cliques):  # recebe qualquer lista de ações com "ts"
     grupos, atual, ultimo = [], [], None
     for c in cliques:
         if ultimo is not None and c["ts"] - ultimo > PAUSA_ATENDIMENTO:
@@ -63,6 +63,16 @@ def separar_atendimentos(cliques):
 def analisar(eventos):
     cliques = [e for e in eventos if e.get("tipo") == "clique"]
     teclas = collections.Counter(e["tecla"] for e in eventos if e.get("tipo") == "tecla")
+    # Códigos digitados (ex.: "12"): a tela de ANTES é a tela em que o PDV estava (resultado da ação anterior).
+    codigos = {}
+    ultima_tela = None
+    for e in eventos:
+        if e.get("tipo") in ("clique", "codigo", "tecla") and e.get("tela_depois"):
+            if e["tipo"] == "codigo":
+                d = codigos.setdefault((e["codigo"], ultima_tela), collections.Counter())
+                d[e["tela_depois"]] += 1
+                e["tela_antes"] = ultima_tela
+            ultima_tela = e["tela_depois"]
     por_botao = {}
     for c in cliques:
         k = (c["tela_antes"],) + celula(c["x"], c["y"])
@@ -71,22 +81,36 @@ def analisar(eventos):
         d["xs"] += c["x"]
         d["ys"] += c["y"]
         d["depois"][c["tela_depois"]] += 1
-    atend = separar_atendimentos(cliques)
+    # Um atendimento é uma sequência de ações (cliques, códigos digitados e F-keys) sem pausas longas.
+    acoes = [e for e in eventos if e.get("tipo") in ("clique", "codigo") or (e.get("tipo") == "tecla" and e.get("tela_depois"))]
+    atend = separar_atendimentos(acoes)
     sequencias = collections.Counter()
     for a in atend:
-        sequencias[tuple("%s@%d,%d" % ((c["tela_antes"],) + celula(c["x"], c["y"])) for c in a[:14])] += 1
+        rotulos = []
+        for c in a[:14]:
+            if c["tipo"] == "clique":
+                rotulos.append("%s@%d,%d" % ((c["tela_antes"],) + celula(c["x"], c["y"])))
+            elif c["tipo"] == "codigo":
+                rotulos.append("cód %s" % c["codigo"])
+            else:
+                rotulos.append(c["tecla"].upper())
+        sequencias[tuple(rotulos)] += 1
     por_dia = collections.Counter(datetime.datetime.fromtimestamp(c["ts"]).date().isoformat() for c in cliques)
     por_hora = collections.Counter(datetime.datetime.fromtimestamp(c["ts"]).hour for c in cliques)
-    return cliques, teclas, por_botao, atend, sequencias, por_dia, por_hora
+    longos = collections.Counter(e["digitos"] for e in eventos if e.get("tipo") == "numero_longo")
+    return cliques, teclas, por_botao, atend, sequencias, por_dia, por_hora, codigos, longos
 
 
-def escrever_md(caminho, eventos, cliques, teclas, por_botao, atend, sequencias, por_dia, por_hora):
+def escrever_md(caminho, eventos, cliques, teclas, por_botao, atend, sequencias, por_dia, por_hora, codigos, longos):
     telas = sorted({c["tela_antes"] for c in cliques} | {c["tela_depois"] for c in cliques})
     larg = cliques[0].get("larg") if cliques else "?"
     alt = cliques[0].get("alt") if cliques else "?"
     L = ["# Resumo da gravação do PDV", ""]
     L.append("- Tela: %sx%s pixels" % (larg, alt))
     L.append("- Cliques gravados: **%d** | atendimentos (pausa > %ds): **%d** | telas diferentes: **%d**" % (len(cliques), PAUSA_ATENDIMENTO, len(atend), len(telas)))
+    ligacoes = [e for e in eventos if e.get("tipo") == "inicio"]
+    if ligacoes:
+        L.append("- Vezes que o gravador iniciou (PC ligado): %d" % len(ligacoes))
     if por_dia:
         L.append("- Dias: " + ", ".join("%s (%d cliques)" % kv for kv in sorted(por_dia.items())))
     if por_hora:
@@ -96,13 +120,24 @@ def escrever_md(caminho, eventos, cliques, teclas, por_botao, atend, sequencias,
         L.append("- Cliques por atendimento: mediana %d, máximo %d" % (tam[len(tam) // 2], tam[-1]))
     L += ["", "## Teclas especiais usadas", ""]
     L.append(", ".join("%s=%d" % kv for kv in teclas.most_common(25)) or "(nenhuma)")
+    L += ["", "## Códigos digitados no teclado (código, tela em que estava, vezes, tela que abriu)", ""]
+    if codigos:
+        L.append("| código | tela antes | vezes | tela depois |")
+        L.append("|---|---|---|---|")
+        for (cod, antes), c in sorted(codigos.items(), key=lambda kv: -sum(kv[1].values()))[:80]:
+            L.append("| %s | %s | %d | %s |" % (cod, antes or "?", sum(c.values()), ", ".join("%s×%d" % kv for kv in c.most_common(3))))
+    else:
+        L.append("(nenhum)")
+    if longos:
+        L.append("")
+        L.append("Números longos ignorados (só a quantidade de dígitos, sem o valor): " + ", ".join("%d dígitos×%d" % kv for kv in sorted(longos.items())))
     L += ["", "## Botões mais clicados (tela de origem, posição média, vezes, para onde levou)", ""]
     L.append("| tela | x | y | vezes | leva a |")
     L.append("|---|---|---|---|---|")
     for (tela, cx, cy), d in sorted(por_botao.items(), key=lambda kv: -kv[1]["n"])[:60]:
         destino = ", ".join("%s×%d" % kv for kv in d["depois"].most_common(3))
         L.append("| %s | %d | %d | %d | %s |" % (tela, d["xs"] // d["n"], d["ys"] // d["n"], d["n"], destino))
-    L += ["", "## Sequências de atendimento mais comuns (até 14 cliques: tela@coluna,linha de células de %dpx)" % CELULA, ""]
+    L += ["", "## Sequências de atendimento mais comuns (até 14 ações: cliques = tela@coluna,linha de células de %dpx; 'cód' = código digitado)" % CELULA, ""]
     for seq, n in sequencias.most_common(25):
         L.append("- %d× : %s" % (n, " → ".join(seq)))
     with open(caminho, "w", encoding="utf-8") as f:
@@ -168,12 +203,12 @@ def main():
         print("Pasta de gravação não encontrada: %s" % pasta)
         return 1
     eventos = ler_eventos(pasta)
-    cliques, teclas, por_botao, atend, sequencias, por_dia, por_hora = analisar(eventos)
+    cliques, teclas, por_botao, atend, sequencias, por_dia, por_hora, codigos, longos = analisar(eventos)
     if not cliques:
         print("Nenhum clique gravado ainda.")
         return 1
     os.makedirs(SAIDA, exist_ok=True)
-    escrever_md(os.path.join(SAIDA, "resumo.md"), eventos, cliques, teclas, por_botao, atend, sequencias, por_dia, por_hora)
+    escrever_md(os.path.join(SAIDA, "resumo.md"), eventos, cliques, teclas, por_botao, atend, sequencias, por_dia, por_hora, codigos, longos)
     escrever_csv(os.path.join(SAIDA, "transicoes.csv"), por_botao)
     mapa_calor(cliques, os.path.join(SAIDA, "mapa_calor.png"))
     for largura, qualidade in ((1000, 70), (800, 60), (640, 50), (480, 45)):

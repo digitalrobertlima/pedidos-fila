@@ -1,8 +1,6 @@
 @echo off
 chcp 65001 >nul
-REM ===== EDITE AQUI: parte do título da janela do PDV (use descobrir_janela.bat) =====
-set JANELA=Degust
-REM ====================================================================================
+REM Modo com janela (para testar e ver mensagens). O filtro de janela vem do arquivo janela.txt.
 cd /d "%~dp0"
-python gravador.py --janela "%JANELA%"
+python gravador.py
 pause

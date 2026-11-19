@@ -1,0 +1,3 @@
+# Uma parte do título da janela do PDV. O gravador só grava quando essa janela está na frente.
+# Use descobrir_janela.bat para ver o título exato.
+Degust

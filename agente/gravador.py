@@ -7,12 +7,21 @@ enquanto as operadoras trabalham normalmente. Para cada clique do mouse ele
 anota: hora, posição, botão, tela antes e tela depois. Guarda uma foto de cada
 TELA DIFERENTE (não de cada clique), então ocupa pouco espaço.
 
-PRIVACIDADE
-  - Teclas digitadas NÃO são gravadas: só teclas especiais (F1..F12, Enter,
-    Esc, Tab...). Letras e números viram só "digito"/"caractere", sem valor.
-  - As fotos de tela podem mostrar o que estiver na tela (nome da operadora,
-    um CPF na nota...). Antes de enviar o pacote a alguém, confira a pasta.
-  - Use --janela para gravar SÓ quando o PDV estiver na frente.
+INICIA E ENCERRA COM O WINDOWS
+  Rode "instalar_inicio_automatico.bat" uma vez. Daí em diante ele abre sozinho
+  quando o Windows inicia (sem janela) e termina quando o PC desliga. Cada
+  evento é gravado na hora, então desligar o PC a qualquer momento não perde nada.
+
+O QUE É GRAVADO
+  - Cliques: posição, hora, botão, tela antes e depois.
+  - Teclas especiais (F1..F12, Enter, Esc, Tab...).
+  - CÓDIGOS CURTOS digitados (até 4 números, ex.: "12" da promoção de 10
+    pastéis), junto com a tela que abriu em seguida.
+  - Números LONGOS (CPF, cartão...) NÃO são gravados: só a quantidade de dígitos.
+  - Letras: só "caractere", sem valor.
+  - As fotos de tela podem mostrar dados na tela (nome da operadora, CPF...).
+    Antes de enviar o pacote a alguém, confira a pasta.
+  - Use --janela (ou o arquivo janela.txt) para gravar SÓ com o PDV na frente.
 
 ATALHOS (valem em qualquer janela)
   Ctrl+Alt+P  pausa / retoma a gravação (ex.: ao digitar CPF do cliente)
@@ -30,6 +39,7 @@ import queue
 import sys
 import threading
 import time
+import traceback
 
 from PIL import Image, ImageChops
 
@@ -39,6 +49,10 @@ LIMIAR_COR = 48        # um ponto "mudou" se a diferença de cor passar disso (0
 LIMIAR_FRACAO = 0.004  # menos de 0,4% de pontos mudados = mesma tela
 MAX_TELAS = 600        # máximo de fotos de telas diferentes guardadas
 TECLAS_ESPECIAIS_IGNORADAS = {"shift", "shift_r", "ctrl_l", "ctrl_r", "alt_l", "alt_r", "alt_gr", "caps_lock", "cmd"}
+TECLAS_COM_FOTO = {"enter", "esc"} | {"f%d" % i for i in range(1, 13)}  # teclas que também fotografam a tela depois
+CODIGO_ESPERA = 0.7       # segundos sem digitar = código completo (o PDV abre a tela sem precisar de Enter)
+MAX_DIGITOS_CODIGO = 4    # mais que isso (CPF, cartão...) não é gravado
+_mutex = None             # mantém vivo o "cadeado" de instância única
 
 
 # ----------------------------------------------------------------------------
@@ -101,6 +115,18 @@ def titulo_janela_ativa():
     return buf.value
 
 
+def instancia_unica():
+    """Impede dois gravadores ao mesmo tempo (ex.: o automático e um aberto à mão)."""
+    global _mutex
+    if os.name != "nt":
+        return True
+    import ctypes
+
+    k = ctypes.windll.kernel32
+    _mutex = k.CreateMutexW(None, False, "Global\\GravadorPDV_Pastelandia")
+    return k.GetLastError() != 183  # 183 = já existe
+
+
 def ativar_dpi():
     """Faz as coordenadas do mouse coincidirem com os pixels reais da tela."""
     if os.name != "nt":
@@ -132,9 +158,13 @@ class Gravador:
         self.parar = threading.Event()
         self.pausado = False
         self.trava_escrita = threading.Lock()
+        self.trava_codigo = threading.Lock()
+        self.digitos = []
+        self.ts_ultimo_digito = 0.0
+        self.timer_codigo = None
         self.contador = 0
         self.tela_wh = (0, 0)
-        # Continua a numeração de telas se o gravador foi reiniciado.
+        # Continua a numeração de telas se o gravador foi reiniciado (ex.: PC ligou de novo).
         self._retomar_catalogo()
 
     # -- persistência --------------------------------------------------------
@@ -147,12 +177,20 @@ class Gravador:
                 except Exception:
                     pass
 
+    def _erro(self):
+        """Erros vão para gravacao/erro.log (no modo sem janela não há console para ver)."""
+        try:
+            with open(os.path.join(self.pasta, "erro.log"), "a", encoding="utf-8") as f:
+                f.write("[%s]\n%s\n" % (datetime.datetime.now().isoformat(timespec="seconds"), traceback.format_exc()))
+        except Exception:
+            pass
+
     def escrever(self, obj):
         obj["ts"] = obj.get("ts") or time.time()
         obj["quando"] = datetime.datetime.fromtimestamp(obj["ts"]).isoformat(timespec="milliseconds")
         arq = os.path.join(self.pasta, "eventos_%s.jsonl" % datetime.date.today().isoformat())
         with self.trava_escrita:
-            with open(arq, "a", encoding="utf-8") as f:
+            with open(arq, "a", encoding="utf-8") as f:  # abre e fecha a cada evento: desligar o PC não perde nada
                 f.write(json.dumps(obj, ensure_ascii=False) + "\n")
             self.contador += 1
             if self.contador % 50 == 0:
@@ -173,26 +211,69 @@ class Gravador:
             return False, titulo
         return True, titulo
 
+    def _agendar_depois(self, evento, atraso=None):
+        """Pede uma foto da tela 'atraso' segundos depois e só então grava o evento."""
+        evento.setdefault("ts", time.time())
+        self.fila_depois.put((time.time() + (self.atraso if atraso is None else atraso), evento))
+
+    # -- códigos digitados (ex.: "12" abre as opções da promoção de 10 pastéis) --
+    def _fechar_codigo(self, motivo):
+        with self.trava_codigo:
+            if self.timer_codigo:
+                self.timer_codigo.cancel()
+                self.timer_codigo = None
+            digitos, self.digitos = "".join(self.digitos), []
+            ts = self.ts_ultimo_digito
+        if not digitos:
+            return
+        if len(digitos) > MAX_DIGITOS_CODIGO:
+            self.escrever({"tipo": "numero_longo", "digitos": len(digitos), "ts": ts})  # sem o valor!
+        else:
+            self._agendar_depois({"tipo": "codigo", "codigo": digitos, "terminou_por": motivo, "ts": ts})
+
+    def _guardar_digito(self, d):
+        with self.trava_codigo:
+            self.digitos.append(d)
+            self.ts_ultimo_digito = time.time()
+            if self.timer_codigo:
+                self.timer_codigo.cancel()
+            self.timer_codigo = threading.Timer(CODIGO_ESPERA, self._fechar_codigo, args=("pausa",))
+            self.timer_codigo.daemon = True
+            self.timer_codigo.start()
+
     # -- chamados pelos "ouvintes" do teclado/mouse (têm de ser rápidos) -------
     def ao_clicar(self, x, y, botao, pressionado):
         if not pressionado:
             return
-        ok, titulo = self._deve_gravar()
-        if ok:
-            self.fila_antes.put((time.time(), int(x), int(y), str(botao).replace("Button.", ""), titulo))
+        try:
+            ok, titulo = self._deve_gravar()
+            if ok:
+                self._fechar_codigo("clique")
+                self.fila_antes.put((time.time(), int(x), int(y), str(botao).replace("Button.", ""), titulo))
+        except Exception:
+            self._erro()
 
     def ao_tecla(self, tecla):
-        ok, _ = self._deve_gravar()
-        if not ok:
-            return
-        char = getattr(tecla, "char", None)
-        if char is not None:
-            nome = "digito" if char.isdigit() else "caractere"
-        else:
-            nome = str(tecla).replace("Key.", "")
+        try:
+            ok, _ = self._deve_gravar()
+            if not ok:
+                return
+            char = getattr(tecla, "char", None)
+            vk = getattr(tecla, "vk", None)
+            if char is None and vk is not None and 96 <= vk <= 105:  # teclado numérico
+                char = str(vk - 96)
+            if char is not None and char.isdigit():
+                return self._guardar_digito(char)
+            nome = "caractere" if char is not None else str(tecla).replace("Key.", "")
             if nome in TECLAS_ESPECIAIS_IGNORADAS:
                 return
-        self.escrever({"tipo": "tecla", "tecla": nome})
+            self._fechar_codigo(nome)
+            if nome in TECLAS_COM_FOTO:
+                self._agendar_depois({"tipo": "tecla", "tecla": nome})
+            else:
+                self.escrever({"tipo": "tecla", "tecla": nome})
+        except Exception:
+            self._erro()
 
     # -- trabalhadores (threads) -------------------------------------------------
     def _trabalhador_antes(self):
@@ -206,10 +287,16 @@ class Gravador:
                     ts, x, y, botao, titulo = self.fila_antes.get(timeout=0.5)
                 except queue.Empty:
                     continue
-                shot = sct.grab(mon)
-                img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
-                tela_antes = self._identificar_e_salvar(img)
-                self.fila_depois.put((ts + self.atraso, ts, x, y, botao, titulo, tela_antes))
+                try:
+                    shot = sct.grab(mon)
+                    img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+                    evento = {"tipo": "clique", "ts": ts, "x": x, "y": y, "botao": botao, "janela": titulo,
+                              "tela_antes": self._identificar_e_salvar(img),
+                              "larg": self.tela_wh[0], "alt": self.tela_wh[1]}
+                    self._agendar_depois(evento)
+                except Exception:
+                    self._erro()
+                    time.sleep(1)
 
     def _trabalhador_depois(self):
         import mss
@@ -218,21 +305,24 @@ class Gravador:
             mon = sct.monitors[1]
             while not self.parar.is_set():
                 try:
-                    quando, ts, x, y, botao, titulo, tela_antes = self.fila_depois.get(timeout=0.5)
+                    quando, evento = self.fila_depois.get(timeout=0.5)
                 except queue.Empty:
                     continue
-                espera = quando - time.time()
-                if espera > 0:
-                    time.sleep(espera)
-                shot = sct.grab(mon)
-                img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
-                tela_depois = self._identificar_e_salvar(img)
-                self.escrever({"tipo": "clique", "ts": ts, "x": x, "y": y, "botao": botao, "janela": titulo,
-                               "tela_antes": tela_antes, "tela_depois": tela_depois,
-                               "larg": self.tela_wh[0], "alt": self.tela_wh[1]})
+                try:
+                    espera = quando - time.time()
+                    if espera > 0:
+                        time.sleep(espera)
+                    shot = sct.grab(mon)
+                    img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+                    evento["tela_depois"] = self._identificar_e_salvar(img)
+                    self.escrever(evento)
+                except Exception:
+                    self._erro()
+                    time.sleep(1)
 
     def _pulso(self):
-        while not self.parar.wait(300):
+        """Um sinal por minuto: mostra até quando o PC ficou ligado (ele pode desligar sem aviso)."""
+        while not self.parar.wait(60):
             if not self.pausado:
                 self.escrever({"tipo": "pulso"})
 
@@ -244,6 +334,7 @@ class Gravador:
 
     def encerrar(self):
         print("Encerrando…")
+        self._fechar_codigo("fim")
         self.escrever({"tipo": "fim"})
         self.parar.set()
 
@@ -283,22 +374,45 @@ def descobrir_janela(segundos=40):
             vistos.add(t)
             print("  janela ativa: %r" % t)
         time.sleep(0.5)
-    print("Use uma parte do título do PDV em --janela (ex.: --janela \"Degust\").")
+    print("Escreva uma parte do título do PDV no arquivo janela.txt (ex.: Degust).")
+
+
+def ler_janela_txt():
+    """Lê o filtro de janela de janela.txt (primeira linha que não for comentário)."""
+    arq = os.path.join(os.path.dirname(os.path.abspath(__file__)), "janela.txt")
+    try:
+        with open(arq, encoding="utf-8-sig") as f:
+            for linha in f:
+                linha = linha.strip()
+                if linha and not linha.startswith("#"):
+                    return linha
+    except OSError:
+        pass
+    return ""
 
 
 def main():
     ap = argparse.ArgumentParser(description="Gravador passivo do PDV (só observa).")
-    ap.add_argument("--janela", default="", help="grava só quando o título da janela ativa contiver este texto")
+    ap.add_argument("--janela", default="", help="grava só quando o título da janela ativa contiver este texto (padrão: janela.txt)")
     ap.add_argument("--pasta", default=PASTA_PADRAO)
     ap.add_argument("--descobrir", action="store_true", help="mostra o título da janela ativa e sai")
     args = ap.parse_args()
     ativar_dpi()
     if args.descobrir:
         return descobrir_janela()
-    if not args.janela:
-        print("AVISO: sem --janela o gravador grava cliques de QUALQUER programa.")
-        print("Rode antes:  python gravador.py --descobrir\n")
-    Gravador(args.pasta, args.janela).rodar()
+    if not instancia_unica():
+        print("Já existe um gravador rodando neste computador.")
+        return 0
+    janela = args.janela or ler_janela_txt()
+    if not janela:
+        print("AVISO: sem filtro de janela o gravador grava cliques de QUALQUER programa.")
+        print("Rode antes:  python gravador.py --descobrir   e preencha o arquivo janela.txt\n")
+    g = Gravador(args.pasta, janela)
+    try:
+        g.rodar()
+    except Exception:
+        g._erro()
+        raise
 
 
 if __name__ == "__main__":
